@@ -633,3 +633,296 @@ test "negative control: P1 has no collision — the floor and no world at all ag
     }
     try testing.expect(below > 0);
 }
+
+// ---------------------------------------------------------------------------
+// Beat 2 — fields, both ways. The harness: a mock field store shared by a
+// caster rill (through a cast door) and the spray (as its Fields), with the
+// mock's receiver-side sum standing in for an ear.
+// ---------------------------------------------------------------------------
+
+const smoke = @embedFile("smoke.rill");
+
+const FieldBench = struct {
+    reg: rill.Registry,
+    mock: rill.MockPlane,
+    fields: spindrift.MockFields,
+    door: spindrift.MockFields.CastDoor,
+    nowhere: spindrift.Nowhere = .{},
+    spray: Spray,
+    caster: ?struct { prog: rill.Program, rt: rill.Runtime } = null,
+
+    fn init(gpa: std.mem.Allocator, capacity: u32, seed: u32) !*FieldBench {
+        const b = try gpa.create(FieldBench);
+        errdefer gpa.destroy(b);
+        b.* = .{ .reg = try registry(gpa), .mock = rill.MockPlane.init(gpa), .fields = spindrift.MockFields.init(gpa), .door = undefined, .spray = undefined };
+        b.door = .{ .inner = b.mock.asPlane(), .fields = &b.fields, .owner = "caster" };
+        b.spray = try Spray.init(gpa, capacity, seed, b.nowhere.asWorld());
+        b.spray.fields = b.fields.asFields();
+        return b;
+    }
+
+    fn deinit(b: *FieldBench, gpa: std.mem.Allocator) void {
+        b.unmountCaster();
+        b.spray.deinit();
+        b.fields.deinit();
+        b.mock.deinit();
+        b.reg.deinit();
+        gpa.destroy(b);
+    }
+
+    fn mount(b: *FieldBench, kernel: []const u8) !void {
+        var diag = rill.registry.Detail{};
+        b.spray.mountKernel(&b.reg, "k", kernel, &diag) catch |err| {
+            std.debug.print("kernel refused: {s}\n", .{diag.text()});
+            return err;
+        };
+    }
+
+    /// A caster rill on the same store, through the door: `cast` lands in
+    /// the mock under the owner "caster", everything else on the mock plane.
+    fn mountCaster(b: *FieldBench, gpa: std.mem.Allocator, src: []const u8) !void {
+        var diag = rill.Diag{};
+        var prog = try rill.parse(gpa, &b.reg, "caster", src, &diag);
+        errdefer prog.deinit();
+        b.caster = .{ .prog = prog, .rt = undefined };
+        b.caster.?.rt = try rill.Runtime.mount(gpa, &b.caster.?.prog, b.door.asPlane(), .{});
+    }
+
+    fn unmountCaster(b: *FieldBench) void {
+        const c = &(b.caster orelse return);
+        c.rt.deinit();
+        c.prog.deinit();
+        b.caster = null;
+    }
+
+    /// One fed tick for everything: the store's clock, the caster, the spray.
+    fn tick(b: *FieldBench, frame: u64, time_ns: u64) !void {
+        b.fields.tick(time_ns);
+        if (b.caster) |*c| try c.rt.tick(.{ .frame = frame, .time_ns = time_ns });
+        try b.spray.tick(.{ .frame = frame, .time_ns = time_ns }, null, b.mock.asPlane());
+    }
+};
+
+test "lattice: a deposit rasterises to the engine's kernel at the grid points, quantised once" {
+    const gpa = testing.allocator;
+    const b = try FieldBench.init(gpa, 4, 1);
+    defer b.deinit(gpa);
+    try b.fields.declare(.{ .name = "$t", .default_decay_ns = 0 });
+    b.spray.samples = &.{.{ .channel = "$t", .cell = fixed.ONE }};
+    try b.fields.deposit("caster", "$t", .{ 0, 0, 0 }, 2, 4, null, "");
+    try b.tick(0, 0);
+    const l = b.spray.lattice("$t").?;
+    try testing.expect(l.live);
+    // No rows: the box is the spawn point padded by a cell — three points an axis.
+    try testing.expectEqual([3]u32{ 3, 3, 3 }, l.dims);
+    try testing.expectEqual(fixed.Vec{ -fixed.ONE, -fixed.ONE, -fixed.ONE }, l.origin);
+    // At the caster, k = 1 ⇒ 2.0; one cell out, q = 1 − 1/16 ⇒ 2·q² = 1.7578125, exact in Q16.16.
+    try testing.expectEqual(fixed.fromInt(2), l.at(1, 1, 1));
+    try testing.expectEqual(@as(Fixed, 115200), l.at(2, 1, 1));
+    try testing.expectEqual(@as(Fixed, 115200), l.at(1, 0, 1));
+    try testing.expectEqual(fixed.fromInt(2), l.sampleAt(.{ 0, 0, 0 }));
+    // The gradient at the caster is zero; one cell out it points back.
+    try testing.expectEqual(fixed.Vec{ 0, 0, 0 }, l.gradientAt(.{ 0, 0, 0 }));
+    try testing.expect(l.gradientAt(.{ fixed.ONE, 0, 0 })[0] < 0);
+    try testing.expectEqual(@as(u32, 0), b.spray.last.bags_missing);
+}
+
+test "hear: a kernel reads the value and the gradient of the spray's lattice at the row" {
+    // Mutation: `hear` answers zero; every assertion below fails.
+    const gpa = testing.allocator;
+    const b = try FieldBench.init(gpa, 4, 1);
+    defer b.deinit(gpa);
+    try b.fields.declare(.{ .name = "$t", .default_decay_ns = 0 });
+    b.spray.samples = &.{.{ .channel = "$t", .cell = fixed.ONE }};
+    try b.fields.deposit("caster", "$t", .{ 1, 0, 0 }, 2, 4, null, "");
+    b.spray.knobs = .{ .rate = fixed.fromInt(1), .life_ns = 100 * std.time.ns_per_s };
+    try b.mount("$t at row.pos | write row.u0\n$t grad at row.pos | .x | write row.u1\n");
+    try b.tick(0, 0);
+    try b.tick(1, std.time.ns_per_s); // one row, at the spray's origin, one cell from the caster
+    try testing.expectEqual(@as(u32, 0), b.spray.last.refusals);
+    try testing.expectEqual(@as(Fixed, 115200), b.spray.pop.userOf(0)[0]);
+    try testing.expect(b.spray.pop.userOf(0)[1] > 0); // uphill is +x, toward the caster
+}
+
+test "hear: refused at mount for a channel the spray does not sample, or a spray with no fields; bare $chan is a parse error" {
+    const gpa = testing.allocator;
+    const b = try FieldBench.init(gpa, 4, 1);
+    defer b.deinit(gpa);
+    var diag = rill.registry.Detail{};
+    try testing.expectError(error.Mount, b.spray.mountKernel(&b.reg, "k", "$fog at row.pos | write row.u0", &diag));
+    try testing.expect(std.mem.indexOf(u8, diag.text(), "does not sample $fog") != null);
+    try testing.expect(std.mem.indexOf(u8, diag.text(), "samples $fog cell") != null);
+    try testing.expectError(error.Parse, b.spray.mountKernel(&b.reg, "k", "$fog | write row.u0", &diag));
+    try testing.expect(std.mem.indexOf(u8, diag.text(), "'$fog at row.pos'") != null);
+    b.spray.fields = null;
+    b.spray.samples = &.{.{ .channel = "$fog", .cell = fixed.ONE }};
+    try testing.expectError(error.Mount, b.spray.mountKernel(&b.reg, "k", "$fog at row.pos | write row.u0", &diag));
+    try testing.expect(std.mem.indexOf(u8, diag.text(), "no field store") != null);
+}
+
+test "hear: a channel the host never declared leaves the lattice dead, and the read refuses per row by name" {
+    const gpa = testing.allocator;
+    const b = try FieldBench.init(gpa, 4, 1);
+    defer b.deinit(gpa);
+    b.spray.samples = &.{.{ .channel = "$ghost", .cell = fixed.ONE }};
+    b.spray.knobs = .{ .rate = fixed.fromInt(1), .life_ns = 100 * std.time.ns_per_s };
+    try b.mount("$ghost at row.pos | write row.u0\n");
+    try b.tick(0, 0);
+    try b.tick(1, std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 1), b.spray.last.bags_missing);
+    try testing.expectEqual(@as(u32, 1), b.spray.last.refusals);
+    try testing.expect(std.mem.indexOf(u8, b.spray.last_refusal.text(), "no such channel") != null);
+}
+
+test "coupling: a deposit `to #tag` reaches a spray only while it carries the tag" {
+    // Mutation: drop the `hears` filter at rasterisation; the uncoupled spray reads the field too.
+    const gpa = testing.allocator;
+    const b = try FieldBench.init(gpa, 4, 1);
+    defer b.deinit(gpa);
+    try b.fields.declare(.{ .name = "$alarm", .default_decay_ns = 0 });
+    b.spray.samples = &.{.{ .channel = "$alarm", .cell = fixed.ONE }};
+    try b.fields.deposit("caster", "$alarm", .{ 0, 0, 0 }, 1, 4, null, "#garrison");
+    try b.tick(0, 0);
+    try testing.expectEqual(@as(Fixed, 0), b.spray.lattice("$alarm").?.sampleAt(.{ 0, 0, 0 }));
+    b.spray.carried = &.{"#garrison"};
+    try b.tick(1, std.time.ns_per_s);
+    try testing.expectEqual(fixed.ONE, b.spray.lattice("$alarm").?.sampleAt(.{ 0, 0, 0 }));
+    b.spray.carried = &.{"#raiders"};
+    try b.tick(2, 2 * std.time.ns_per_s);
+    try testing.expectEqual(@as(Fixed, 0), b.spray.lattice("$alarm").?.sampleAt(.{ 0, 0, 0 }));
+}
+
+// ---------------------------------------------------------------------------
+// G3 — fields in. A spray that samples `$wind` bends; unmount the caster and
+// the trail straightens within the deposit's decay. Mutation: disable
+// sampling in the kernel; the trail is straight from tick 0 and the gate
+// fails.
+// ---------------------------------------------------------------------------
+
+test "G3: the smoke leans away from the wind's source, and straightens once the caster is gone and its deposit has decayed" {
+    const gpa = testing.allocator;
+    const b = try FieldBench.init(gpa, 256, 9);
+    defer b.deinit(gpa);
+    // ε = 0.01, τ = 1 s: a deposit of 8 is culled at ln(800) ≈ 6.68 s.
+    try b.fields.declare(.{ .name = "$wind", .epsilon = 0.01, .default_decay_ns = std.time.ns_per_s });
+    b.spray.samples = &.{.{ .channel = "$wind", .cell = fixed.HALF }};
+    b.spray.knobs = .{ .rate = fixed.fromInt(4), .speed = fixed.fromInt(1), .spread = 0, .life_ns = 30 * std.time.ns_per_s };
+    // Rows rise straight up at 1 cell/s; the wind blows from x = −3.
+    try b.mount("spawn\n$wind grad at row.pos | mul -1 | write row.vel add\nperish\n");
+    try b.mountCaster(gpa, "every 1f | cast $wind 8 radius 6 at {x: -3, y: 0, z: 0}");
+
+    var t: u64 = 0;
+    while (t <= 4) : (t += 1) try b.tick(t, t * std.time.ns_per_s / 4);
+    try testing.expectEqual(@as(u32, 0), b.spray.last.refusals);
+    // Every row born under the wind leans downwind: +x velocity, all of them.
+    var leaning: u32 = 0;
+    var id: u32 = 0;
+    while (id < b.spray.pop.capacity) : (id += 1) {
+        if (!b.spray.pop.alive[id]) continue;
+        try testing.expect(b.spray.pop.vel[0][id] > 0);
+        leaning += 1;
+    }
+    try testing.expect(leaning >= 3);
+    const born_under_wind = b.spray.spawned;
+
+    // The caster is unmounted at 1 s. Its deposit decays from there and is
+    // culled at 1 + ln(800) ≈ 7.68 s. Between those a row born under the
+    // dying wind still leans by a hair (168/65536 of a cell per second was
+    // the first draft's finding — a real lean from a nearly dead deposit,
+    // not a bug), so "straight" means born after the cull: age ≤ 2 s at 10 s
+    // (a row ages on its birth tick, so eight rows, ticks 33–40).
+    b.unmountCaster();
+    while (t <= 40) : (t += 1) try b.tick(t, t * std.time.ns_per_s / 4);
+    try testing.expectEqual(@as(usize, 0), b.fields.depositCount("$wind"));
+    // Rows born after the cull go straight up: vel.x is exactly zero.
+    var straight: u32 = 0;
+    var bent: u32 = 0;
+    id = 0;
+    while (id < b.spray.pop.capacity) : (id += 1) {
+        if (!b.spray.pop.alive[id]) continue;
+        if (b.spray.pop.age_ns[id] <= 2 * std.time.ns_per_s) {
+            try testing.expectEqual(@as(Fixed, 0), b.spray.pop.vel[0][id]);
+            straight += 1;
+        } else if (b.spray.pop.vel[0][id] > 0) bent += 1;
+    }
+    try testing.expect(straight >= 8);
+    try testing.expect(bent >= 3); // the old rows keep the lean they got
+    try testing.expect(b.spray.spawned > born_under_wind);
+}
+
+// ---------------------------------------------------------------------------
+// G4 — fields out. A smoke spray casts `$dankness`; an ear downstream reads
+// above zero; the spray unmounts and the ear reads zero (casts are owned by
+// their caster — ownership is the ceiling). Mutation: remove the cast; the
+// ear never rises.
+// ---------------------------------------------------------------------------
+
+test "G4: the smoke makes the room dank — one aggregate per tick, replaced, and withdrawn with the spray" {
+    const gpa = testing.allocator;
+    const b = try FieldBench.init(gpa, 64, 3);
+    defer b.deinit(gpa);
+    try b.fields.declare(.{ .name = "$dankness", .epsilon = 0.001, .default_decay_ns = 2 * std.time.ns_per_s });
+    b.spray.name = "smoke";
+    b.spray.casts = &.{.{ .channel = "$dankness", .per_row_amplitude = 0.05, .radius = .bounds }};
+    b.spray.knobs = .{ .rate = fixed.fromInt(8), .speed = fixed.fromInt(1), .spread = fixed.HALF, .life_ns = 4 * std.time.ns_per_s };
+    try b.mount("spawn\nperish\n");
+    const ear = [3]f32{ 0, 1, 0 };
+    try testing.expectEqual(@as(f32, 0), b.fields.sample("$dankness", ear, true, &.{}).?.value);
+    var t: u64 = 0;
+    while (t <= 12) : (t += 1) try b.tick(t, t * std.time.ns_per_s / 4);
+    try testing.expectEqual(@as(u32, 0), b.spray.last.cast_refusals);
+    // ONE deposit, whatever the rows did — the aggregate is replaced, never trailed.
+    try testing.expectEqual(@as(usize, 1), b.fields.depositCount("$dankness"));
+    const reading = b.fields.sample("$dankness", ear, true, &.{}).?;
+    try testing.expect(reading.value > 0);
+    // amplitude = per-row × live, exactly
+    try testing.expectApproxEqAbs(@as(f32, 0.05) * @as(f32, @floatFromInt(b.spray.pop.live)), b.fields.deposits.items[0].amplitude, 1e-5);
+    // Unmount: the bag goes with its owner, and the ear reads zero at once.
+    try b.spray.unmount(b.mock.asPlane());
+    try testing.expectEqual(@as(usize, 0), b.fields.depositCount("$dankness"));
+    try testing.expectEqual(@as(f32, 0), b.fields.sample("$dankness", ear, true, &.{}).?.value);
+}
+
+test "G4: an undeclared channel refuses the cast, counted, and the sim is unchanged" {
+    const gpa = testing.allocator;
+    const b = try FieldBench.init(gpa, 8, 3);
+    defer b.deinit(gpa);
+    b.spray.casts = &.{.{ .channel = "$nothing", .per_row_amplitude = 1 }};
+    b.spray.knobs = .{ .rate = fixed.fromInt(4), .life_ns = 10 * std.time.ns_per_s };
+    try b.mount("spawn\n");
+    try b.tick(0, 0);
+    try b.tick(1, std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 1), b.spray.last.cast_refusals);
+    try testing.expectEqual(@as(u32, 1), b.fields.refused);
+    try testing.expectEqual(@as(u32, 4), b.spray.pop.live);
+}
+
+test "G0 with a field: same script, same wind, same bytes — the lattice is re-derived, not remembered" {
+    const gpa = testing.allocator;
+    var dumps: [2][]u8 = undefined;
+    for (&dumps) |*d| {
+        const b = try FieldBench.init(gpa, 128, 11);
+        defer b.deinit(gpa);
+        try b.fields.declare(.{ .name = "$wind", .default_decay_ns = std.time.ns_per_s });
+        b.spray.samples = &.{.{ .channel = "$wind", .cell = fixed.HALF }};
+        b.spray.knobs = .{ .rate = fixed.fromInt(6), .speed = fixed.fromInt(1), .spread = fixed.HALF, .life_ns = 3 * std.time.ns_per_s };
+        try b.mount("spawn\n$wind grad at row.pos | mul -2 | write row.vel add\nperish\n");
+        try b.mountCaster(gpa, "every 1f | cast $wind 5 radius 4 at {x: -2, y: 1, z: 0}");
+        var t: u64 = 0;
+        while (t <= 24) : (t += 1) try b.tick(t, t * std.time.ns_per_s / 8);
+        try testing.expectEqual(@as(u32, 0), b.spray.last.refusals);
+        d.* = try dump.write(gpa, &b.spray.pop, b.spray.ticks);
+    }
+    defer for (dumps) |d| gpa.free(d);
+    try testing.expectEqualSlices(u8, dumps[0], dumps[1]);
+}
+
+test "smoke.rill: the shipped kernel parses and mounts on a spray that samples $wind" {
+    const gpa = testing.allocator;
+    const b = try FieldBench.init(gpa, 4, 1);
+    defer b.deinit(gpa);
+    try b.fields.declare(.{ .name = "$wind" });
+    b.spray.samples = &.{.{ .channel = "$wind", .cell = fixed.HALF }};
+    try b.mount(smoke);
+    try testing.expectEqual(@as(usize, 6), b.spray.kernel.?.prog.nodeCount());
+}

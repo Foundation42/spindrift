@@ -6,29 +6,36 @@
 //! the way a host mounts a rill on the world, and evaluates it once per
 //! live row per tick.
 //!
-//! **The tick is four phases and only the sweep is parallel** (recon R-b
+//! **The tick is six phases and only the sweep is parallel** (recon R-b
 //! §3, kept from P0 — and G0 is what forces the shape):
 //!
 //!   1. broadcasts — every `plane.…` the kernel reads is fetched once from
 //!      the plane, `@self` resolved to this spray, converted once to a row
 //!      value (the one float boundary), and handed to the runtime;
-//!   2. spawn — serial: `rate × dt` rows, exact in nanoseconds, popped from
+//!   2. materialise — every channel the archetype `samples` is rasterised
+//!      from the host's live bag onto a lattice over the spray's bounds,
+//!      once, so `hear` is a trilinear read of integers (beat 2, §3.4);
+//!   3. spawn — serial: `rate × dt` rows, exact in nanoseconds, popped from
 //!      the freelist in a fixed order, born at the spray's position with the
 //!      spray's `life` and a seed from the spray's seed and the birth ordinal;
-//!   3. the sweep — chunked over `common/jobs.zig`, row-local: the kernel
+//!   4. the sweep — chunked over `common/jobs.zig`, row-local: the kernel
 //!      once per live row (its writes land after its sweep of that row),
 //!      then `pos += vel · dt` and `age += dt`. A kernel's `perish` marks;
 //!      nothing here kills;
-//!   4. reap — serial, ascending id: doomed rows go back on the freelist.
-//!      Push ORDER is what the next spawn's ids are a function of.
+//!   5. reap — serial, ascending id: doomed rows go back on the freelist.
+//!      Push ORDER is what the next spawn's ids are a function of;
+//!   6. cast — every channel the archetype `casts` gets ONE aggregate
+//!      deposit: centre of mass, amplitude ∝ live count × per-row amplitude,
+//!      radius from bounds; the host replaces last tick's (§3.4).
 //!
 //! Then the spray says what it is on the plane: `plane.drift.@<name>.count`,
-//! `.bounds` and `.digest`, change-only. On unmount it says zero — absence
-//! is said, the S5 precedent.
+//! `.bounds` and `.digest`, change-only. On unmount it says zero and
+//! withdraws its casts — absence is said, and ownership is the ceiling.
 //!
 //! Integration is not a word: a velocity that did not move its position
 //! would not be a velocity. Time is fed; dt is the fed delta; a regression
-//! is loud. No float enters the loop.
+//! is loud. No float enters the loop: the lattice and the cast are the
+//! boundaries, crossed once per tick.
 
 const std = @import("std");
 const rill = @import("rill");
@@ -37,6 +44,7 @@ const struple = @import("struple");
 const jobs = common.jobs;
 const fixed = @import("fixed.zig");
 const world_mod = @import("world.zig");
+const fields_mod = @import("fields.zig");
 const population = @import("population.zig");
 const Population = population.Population;
 
@@ -46,6 +54,7 @@ const Val = rill.row.Val;
 
 pub const Now = rill.Now;
 pub const World = world_mod.World;
+pub const Fields = fields_mod.Fields;
 
 pub const TickError = error{TimeRegression} || std.mem.Allocator.Error;
 pub const MountError = error{ Parse, Mount } || std.mem.Allocator.Error;
@@ -54,7 +63,7 @@ pub const MountError = error{ Parse, Mount } || std.mem.Allocator.Error;
 /// seconds in Q16.16; `life` is nanoseconds on the knob and on the row
 /// (the row reads it back in seconds). A knob written on the plane at
 /// `plane.drift.@<name>.<knob>` wins over the field here — the host's
-/// business (`drift-run` does it; the tenant's bridge will).
+/// business (`drift-run` does it; the tenant's bridge does).
 pub const Knobs = struct {
     /// Rows per second.
     rate: Fixed = 0,
@@ -64,6 +73,31 @@ pub const Knobs = struct {
     spread: Fixed = 0,
     /// How long a row lives, fed nanoseconds; `perish` reaps at it.
     life_ns: u64 = std.time.ns_per_s,
+};
+
+/// `samples $wind cell 0.5` on the archetype: a channel the kernel may
+/// `hear`, and the lattice's declared cell size in cells.
+pub const Sampled = struct {
+    channel: []const u8,
+    cell: Fixed,
+};
+
+pub const RadiusPolicy = union(enum) {
+    /// Half the bounds' diagonal, floored at one cell so a lone row casts.
+    bounds,
+    fixed: f32,
+};
+
+/// `casts $dankness amp 0.01 radius bounds [to #tag]` on the archetype.
+pub const Casting = struct {
+    channel: []const u8,
+    /// Amplitude per live row; the aggregate's is this × the live count.
+    per_row_amplitude: f32,
+    radius: RadiusPolicy = .bounds,
+    /// Null = the channel's default.
+    decay_ns: ?u64 = null,
+    /// Coupling, sigil included; empty = uncoupled.
+    to: []const u8 = "",
 };
 
 /// What one tick did — the numbers `drift-run` prints and G6 will read.
@@ -78,12 +112,119 @@ pub const Stats = struct {
     row_steps: u32 = 0,
     /// Kernel refusals across every row this tick, merged after the join.
     refusals: u32 = 0,
+    /// Sampled channels the host does not declare — the lattice stays
+    /// dead and `hear` refuses, said here rather than guessed.
+    bags_missing: u32 = 0,
+    /// Lattices whose cell was doubled to fit the cap this tick.
+    coarsened: u32 = 0,
+    /// Aggregate casts the host refused (an undeclared channel, no store).
+    cast_refusals: u32 = 0,
 };
 
 /// Rows per job. ≈ 80 bytes of row across the arrays, so a chunk streams
 /// ≈ 80 KB — inside L2 with room for scratch. A constant until the first
 /// customer scene moves it (R-b §3).
 pub const DEFAULT_CHUNK: u32 = 1024;
+
+/// Grid points per axis a lattice may have. 33³ Q16.16 values is 144 KB
+/// per channel; a spray whose bounds want more gets a coarser cell and
+/// says `coarsened`, never a bigger allocation — capacity is the only one.
+pub const MAX_SAMPLES: u32 = 33;
+
+/// A sampled channel's field, rasterised onto grid points over the
+/// spray's bounds. Values are Q16.16 amplitudes at the points; `sampleAt`
+/// is trilinear and `gradientAt` is central differences, both integer.
+pub const Lattice = struct {
+    channel: []const u8,
+    declared_cell: Fixed,
+    /// The cell in use — the declared one, doubled until the bounds fit.
+    cell: Fixed = 0,
+    origin: Vec = fixed.zero_vec,
+    /// Grid points per axis, each ≥ 2 once materialised.
+    dims: [3]u32 = .{ 0, 0, 0 },
+    values: []Fixed,
+    /// False until the host has answered for this channel this tick —
+    /// an unknown channel leaves the lattice dead, and `hear` refuses.
+    live: bool = false,
+    coarsened: u8 = 0,
+
+    pub fn index(self: *const Lattice, i: u32, j: u32, k: u32) usize {
+        return (@as(usize, k) * self.dims[1] + j) * self.dims[0] + i;
+    }
+
+    pub fn at(self: *const Lattice, i: u32, j: u32, k: u32) Fixed {
+        return self.values[self.index(i, j, k)];
+    }
+
+    /// `p − origin` in grid units, Q16.16, clamped to the grid: integer part
+    /// is the point, fraction is the position between it and the next.
+    fn local(self: *const Lattice, p: Vec, axis: usize) Fixed {
+        const hi: i64 = @as(i64, @intCast(self.dims[axis] - 1)) << fixed.FRAC_BITS;
+        const off: i64 = @as(i64, p[axis]) - self.origin[axis];
+        const q: i64 = @divFloor(off << fixed.FRAC_BITS, self.cell);
+        return @intCast(@min(@max(q, 0), hi));
+    }
+
+    /// Trilinear, exact: eight point reads and seven fixed lerps.
+    pub fn sampleAt(self: *const Lattice, p: Vec) Fixed {
+        var i: [3]u32 = undefined;
+        var t: [3]Fixed = undefined;
+        inline for (0..3) |a| {
+            const l = self.local(p, a);
+            var cellidx: u32 = @intCast(l >> fixed.FRAC_BITS);
+            var frac: Fixed = l & (fixed.ONE - 1);
+            if (cellidx >= self.dims[a] - 1) {
+                cellidx = self.dims[a] - 2;
+                frac = fixed.ONE;
+            }
+            i[a] = cellidx;
+            t[a] = frac;
+        }
+        const c000 = self.at(i[0], i[1], i[2]);
+        const c100 = self.at(i[0] + 1, i[1], i[2]);
+        const c010 = self.at(i[0], i[1] + 1, i[2]);
+        const c110 = self.at(i[0] + 1, i[1] + 1, i[2]);
+        const c001 = self.at(i[0], i[1], i[2] + 1);
+        const c101 = self.at(i[0] + 1, i[1], i[2] + 1);
+        const c011 = self.at(i[0], i[1] + 1, i[2] + 1);
+        const c111 = self.at(i[0] + 1, i[1] + 1, i[2] + 1);
+        const c00 = lerp(c000, c100, t[0]);
+        const c10 = lerp(c010, c110, t[0]);
+        const c01 = lerp(c001, c101, t[0]);
+        const c11 = lerp(c011, c111, t[0]);
+        const c0 = lerp(c00, c10, t[1]);
+        const c1 = lerp(c01, c11, t[1]);
+        return lerp(c0, c1, t[2]);
+    }
+
+    /// Central differences at the nearest grid point, one-sided at the
+    /// edges; amplitude per cell, so a row reads the same slope whatever
+    /// the cell the lattice settled on.
+    pub fn gradientAt(self: *const Lattice, p: Vec) Vec {
+        var n: [3]u32 = undefined;
+        inline for (0..3) |a| {
+            const l = self.local(p, a);
+            const nearest: u32 = @intCast((l + fixed.HALF) >> fixed.FRAC_BITS);
+            n[a] = @min(nearest, self.dims[a] - 1);
+        }
+        var g: Vec = undefined;
+        inline for (0..3) |a| {
+            const lo: u32 = if (n[a] > 0) n[a] - 1 else n[a];
+            const hi: u32 = if (n[a] + 1 < self.dims[a]) n[a] + 1 else n[a];
+            var lo_i = n;
+            var hi_i = n;
+            lo_i[a] = lo;
+            hi_i[a] = hi;
+            const span: i64 = @as(i64, @intCast(hi - lo)) * self.cell;
+            g[a] = if (span == 0) 0 else @intCast(@divFloor(@as(i64, self.at(hi_i[0], hi_i[1], hi_i[2]) - self.at(lo_i[0], lo_i[1], lo_i[2])) << fixed.FRAC_BITS, span));
+        }
+        return g;
+    }
+
+    fn lerp(a: Fixed, b: Fixed, t: Fixed) Fixed {
+        return a +% fixed.mul(b -% a, t);
+    }
+};
 
 /// A mounted kernel: the parsed program, the row runtime over this spray's
 /// population, and one evaluation scratch per chunk (chunk-indexed, so no
@@ -98,7 +239,7 @@ pub const Spray = struct {
     gpa: std.mem.Allocator,
     pop: Population,
     /// The `@name` on the plane — `plane.drift.@<name>.…` is where the
-    /// knobs are read and the count is said.
+    /// knobs are read and the count is said; also the cast owner's name.
     name: []const u8 = "em",
     /// The spray's decorrelator: every row's seed derives from this and the
     /// row's birth ordinal, and nothing else.
@@ -110,6 +251,16 @@ pub const Spray = struct {
     aim: Vec = .{ 0, fixed.ONE, 0 },
     knobs: Knobs = .{},
     world: World,
+    /// The host's field store; null = a spray with no fields (a kernel
+    /// that `hear`s refuses at mount, and casts are dropped, counted).
+    fields: ?Fields = null,
+    /// `samples …` and `casts …` from the archetype.
+    samples: []const Sampled = &.{},
+    casts: []const Casting = &.{},
+    /// Tags this spray carries, for coupled deposits (`to #tag`) — the
+    /// spray's authored ear hears a coupled deposit only while it carries
+    /// the tag, exactly as an entity-bound ear does. Set by the host.
+    carried: []const []const u8 = &.{},
     chunk: u32 = DEFAULT_CHUNK,
 
     /// Rows owed by `rate`, in (rows · 2¹⁶ · ns): `rate` is Q16.16 rows/s
@@ -126,6 +277,9 @@ pub const Spray = struct {
     last_refusal: rill.registry.Detail = .{},
     chunk_steps: []u32 = &.{},
     kernel: ?Kernel = null,
+    /// One per `samples` entry, allocated on the first tick that sees them.
+    lattices: []Lattice = &.{},
+    bag_scratch: std.ArrayListUnmanaged(fields_mod.Deposit) = .empty,
 
     /// What was last said on the plane, so a tick that changes nothing says
     /// nothing (change-only: a sensor precondition, and a quiet log).
@@ -146,6 +300,9 @@ pub const Spray = struct {
         self.unmountKernel();
         self.pop.deinit();
         self.gpa.free(self.chunk_steps);
+        for (self.lattices) |l| self.gpa.free(l.values);
+        self.gpa.free(self.lattices);
+        self.bag_scratch.deinit(self.gpa);
     }
 
     // -- the kernel ----------------------------------------------------------
@@ -166,6 +323,25 @@ pub const Spray = struct {
             },
         };
         errdefer prog.deinit();
+        // The spray's own refusals, before rill's: a `hear` of a channel the
+        // archetype does not sample has no lattice to read, and the answer
+        // is the archetype's declaration, not a zero.
+        for (prog.nodes.items) |*n| {
+            const def = reg.get(n.op);
+            if (!std.mem.eql(u8, def.name, "hear")) continue;
+            const chan = n.statics[0].channel;
+            if (self.fields == null) {
+                diag.set("{s}: '{s} at …' — this spray has no field store to hear; the host mounted it without fields", .{ n.name, chan });
+                return error.Mount;
+            }
+            const declared = for (self.samples) |s| {
+                if (std.mem.eql(u8, s.channel, chan)) break true;
+            } else false;
+            if (!declared) {
+                diag.set("{s}: '{s} at …' — this spray does not sample {s}; declare `samples {s} cell <c>` on its ^spray", .{ n.name, chan, chan, chan });
+                return error.Mount;
+            }
+        }
         // `mount` borrows a pointer to the program; the Kernel owns both, so
         // build the kernel in place and mount against its own field.
         self.kernel = .{ .prog = prog, .rt = undefined };
@@ -195,6 +371,14 @@ pub const Spray = struct {
         return self.kernel != null;
     }
 
+    /// The lattice for a sampled channel, for `hear`. Null = not sampled.
+    pub fn lattice(self: *const Spray, channel: []const u8) ?*const Lattice {
+        for (self.lattices) |*l| {
+            if (std.mem.eql(u8, l.channel, channel)) return l;
+        }
+        return null;
+    }
+
     // -- the tick ------------------------------------------------------------
 
     /// One fed tick. The first call sets the epoch (dt = 0: nothing spawns,
@@ -213,9 +397,11 @@ pub const Spray = struct {
 
         var stats = Stats{};
         try self.broadcastPhase(plane);
+        try self.materialisePhase(&stats);
         self.spawnPhase(dt_ns, &stats);
         try self.sweepPhase(dt, dt_ns, js, &stats);
         self.reapPhase(&stats);
+        self.castPhase(&stats);
         self.last = stats;
         self.ticks += 1;
         if (plane) |p| try self.say(p);
@@ -248,7 +434,110 @@ pub const Spray = struct {
         return std.fmt.bufPrint(buf, "{s}@{s}{s}", .{ path[0..at], self.name, path[at + "@self".len ..] }) catch path;
     }
 
-    // -- phase 2: spawn (serial) -----------------------------------------------
+    // -- phase 2: materialise --------------------------------------------------
+
+    /// Rasterise every sampled channel's bag onto its lattice over the
+    /// spray's bounds. The bounds are last tick's rows plus the spawn
+    /// point, padded by a cell; the cell doubles until the grid fits the
+    /// cap. Every grid point sums the engine's kernel over the deposits
+    /// this spray hears, is clamped by the channel, and lands as Q16.16 —
+    /// the field enters the sim here, once per point per tick.
+    fn materialisePhase(self: *Spray, stats: *Stats) !void {
+        if (self.samples.len == 0) return;
+        if (self.lattices.len != self.samples.len) {
+            for (self.lattices) |l| self.gpa.free(l.values);
+            self.gpa.free(self.lattices);
+            self.lattices = try self.gpa.alloc(Lattice, self.samples.len);
+            var made: usize = 0;
+            errdefer {
+                for (self.lattices[0..made]) |l| self.gpa.free(l.values);
+                self.gpa.free(self.lattices);
+                self.lattices = &.{};
+            }
+            for (self.samples, self.lattices) |s, *l| {
+                l.* = .{ .channel = s.channel, .declared_cell = s.cell, .values = try self.gpa.alloc(Fixed, MAX_SAMPLES * MAX_SAMPLES * MAX_SAMPLES) };
+                made += 1;
+            }
+        }
+        const host = self.fields orelse {
+            for (self.lattices) |*l| l.live = false;
+            stats.bags_missing += @intCast(self.samples.len);
+            return;
+        };
+
+        // The box: live rows and the spawn point, padded by one cell.
+        var lo = self.pos;
+        var hi = self.pos;
+        var id: u32 = 0;
+        while (id < self.pop.capacity) : (id += 1) {
+            if (!self.pop.alive[id]) continue;
+            inline for (0..3) |a| {
+                lo[a] = @min(lo[a], self.pop.pos[a][id]);
+                hi[a] = @max(hi[a], self.pop.pos[a][id]);
+            }
+        }
+
+        for (self.lattices) |*l| {
+            self.bag_scratch.clearRetainingCapacity();
+            const maybe_bag = host.bag(l.channel, self.now.time_ns, self.gpa, &self.bag_scratch) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => null, // a refusal is an undeclared channel by another name
+            };
+            const bag = maybe_bag orelse {
+                l.live = false;
+                stats.bags_missing += 1;
+                continue;
+            };
+            // Fit: cell doubles until every axis has ≤ MAX_SAMPLES points.
+            var cell = l.declared_cell;
+            var coarsened: u8 = 0;
+            var dims: [3]u32 = undefined;
+            while (true) {
+                var fits = true;
+                inline for (0..3) |a| {
+                    const extent: i64 = @as(i64, hi[a]) - lo[a] + 2 * @as(i64, cell);
+                    const n: i64 = @divFloor(extent + cell - 1, cell) + 1;
+                    dims[a] = @intCast(@max(n, 2));
+                    if (dims[a] > MAX_SAMPLES) fits = false;
+                }
+                if (fits or cell >= std.math.maxInt(Fixed) / 2) break;
+                cell *= 2;
+                coarsened += 1;
+            }
+            inline for (0..3) |a| dims[a] = @min(dims[a], MAX_SAMPLES);
+            l.cell = cell;
+            l.dims = dims;
+            l.coarsened = coarsened;
+            inline for (0..3) |a| l.origin[a] = lo[a] - cell;
+            if (coarsened > 0) stats.coarsened += 1;
+
+            // Rasterise.
+            var k: u32 = 0;
+            while (k < dims[2]) : (k += 1) {
+                var j: u32 = 0;
+                while (j < dims[1]) : (j += 1) {
+                    var i: u32 = 0;
+                    while (i < dims[0]) : (i += 1) {
+                        const at = [3]f32{
+                            fixed.toF32(l.origin[0] +% @as(Fixed, @intCast(i)) * cell),
+                            fixed.toF32(l.origin[1] +% @as(Fixed, @intCast(j)) * cell),
+                            fixed.toF32(l.origin[2] +% @as(Fixed, @intCast(k)) * cell),
+                        };
+                        var value: f32 = 0;
+                        for (bag.deposits) |d| {
+                            if (!fields_mod.hears(d, self.carried)) continue;
+                            const kv = fields_mod.kernelAt(d, at) orelse continue;
+                            value += kv.value;
+                        }
+                        l.values[l.index(i, j, k)] = fixed.fromF32Saturating(std.math.clamp(value, bag.clamp_lo, bag.clamp_hi));
+                    }
+                }
+            }
+            l.live = true;
+        }
+    }
+
+    // -- phase 3: spawn (serial) -----------------------------------------------
 
     fn spawnPhase(self: *Spray, dt_ns: u64, stats: *Stats) void {
         if (dt_ns == 0) return;
@@ -273,7 +562,7 @@ pub const Spray = struct {
         }
     }
 
-    // -- phase 3: the sweep (chunked) ------------------------------------------
+    // -- phase 4: the sweep (chunked) ------------------------------------------
 
     const SweepCtx = struct { spray: *Spray, dt: Fixed, dt_ns: u64 };
 
@@ -341,7 +630,7 @@ pub const Spray = struct {
 
     /// Per row: the kernel, then integration, then age. Row-local by
     /// construction — the only indices touched are `id`'s own, plus this
-    /// chunk's own step slot and scratch.
+    /// chunk's own step slot and scratch. The lattices are read-only here.
     fn sweepRows(ctx: *const SweepCtx, start: u32, end: u32) void {
         const s = ctx.spray;
         const p = &s.pop;
@@ -361,7 +650,7 @@ pub const Spray = struct {
         s.chunk_steps[chunk_index] = steps;
     }
 
-    // -- phase 4: reap (serial, ascending) -------------------------------------
+    // -- phase 5: reap (serial, ascending) -------------------------------------
 
     fn reapPhase(self: *Spray, stats: *Stats) void {
         var id: u32 = 0;
@@ -370,6 +659,64 @@ pub const Spray = struct {
                 self.pop.kill(id);
                 stats.died += 1;
             }
+        }
+    }
+
+    // -- phase 6: cast ----------------------------------------------------------
+
+    /// One aggregate per declared channel: the centre of mass of the live
+    /// rows (an exact integer mean, then one conversion), amplitude = per-row
+    /// × live, radius from the bounds. The host replaces last tick's. No
+    /// live rows, no cast — the previous one decays on its own; unmount
+    /// withdraws it.
+    fn castPhase(self: *Spray, stats: *Stats) void {
+        if (self.casts.len == 0 or self.pop.live == 0) return;
+        const host = self.fields orelse {
+            stats.cast_refusals += @intCast(self.casts.len);
+            return;
+        };
+        var sum: [3]i64 = .{ 0, 0, 0 };
+        var lo: Vec = undefined;
+        var hi: Vec = undefined;
+        var any = false;
+        var id: u32 = 0;
+        while (id < self.pop.capacity) : (id += 1) {
+            if (!self.pop.alive[id]) continue;
+            inline for (0..3) |a| {
+                const v = self.pop.pos[a][id];
+                sum[a] += v;
+                if (!any or v < lo[a]) lo[a] = v;
+                if (!any or v > hi[a]) hi[a] = v;
+            }
+            any = true;
+        }
+        const n: i64 = self.pop.live;
+        const centre = [3]f32{
+            fixed.toF32(@intCast(@divFloor(sum[0], n))),
+            fixed.toF32(@intCast(@divFloor(sum[1], n))),
+            fixed.toF32(@intCast(@divFloor(sum[2], n))),
+        };
+        var half_diag: f32 = 0;
+        inline for (0..3) |a| {
+            const e = fixed.toF32(hi[a] -% lo[a]) / 2;
+            half_diag += e * e;
+        }
+        half_diag = @sqrt(half_diag);
+        for (self.casts) |c| {
+            const radius: f32 = switch (c.radius) {
+                .bounds => @max(half_diag, 1.0),
+                .fixed => |r| r,
+            };
+            host.cast(self.name, self.now.time_ns, .{
+                .channel = c.channel,
+                .pos = centre,
+                .amplitude = c.per_row_amplitude * @as(f32, @floatFromInt(self.pop.live)),
+                .radius = radius,
+                .decay_ns = c.decay_ns,
+                .to = c.to,
+            }) catch {
+                stats.cast_refusals += 1;
+            };
         }
     }
 
@@ -409,10 +756,12 @@ pub const Spray = struct {
         }
     }
 
-    /// Absence, said: `count` is zero, and the kernel is gone. The other
-    /// two leaves keep their last value — a bound of nothing is not a box.
+    /// Absence, said: `count` is zero, the kernel is gone, and the spray's
+    /// casts are withdrawn — ownership is the ceiling. The other two leaves
+    /// keep their last value (a bound of nothing is not a box).
     pub fn unmount(self: *Spray, plane: rill.Plane) !void {
         self.unmountKernel();
+        if (self.fields) |f| f.withdraw(self.name);
         var pk = struple.Packer.init(self.gpa);
         defer pk.deinit();
         var path_buf: [256]u8 = undefined;
@@ -530,4 +879,39 @@ test "jitter: stays inside ±spread and is zero at zero spread" {
         try std.testing.expect(j >= -fixed.ONE and j <= fixed.ONE);
     }
     try std.testing.expectEqual(@as(Fixed, 0), jitter(mix(3, 1), 0, 0));
+}
+
+test "lattice: trilinear is exact on the grid and between it on every axis, and the gradient is the slope in amplitude per cell" {
+    const gpa = std.testing.allocator;
+    var l = Lattice{ .channel = "$t", .declared_cell = fixed.ONE, .cell = fixed.ONE, .origin = .{ 0, 0, 0 }, .dims = .{ 3, 3, 3 }, .values = try gpa.alloc(Fixed, 27), .live = true };
+    defer gpa.free(l.values);
+    // f = 2x + 3y + 5z: linear, so trilinear reproduces it EXACTLY anywhere,
+    // and every axis contributes — a field constant in y and z let a
+    // mutation that dropped the y and z lerps survive the first draft of
+    // this gate (Q11, ledger): A equalled B on the axes it broke.
+    var k: u32 = 0;
+    while (k < 3) : (k += 1) {
+        var j: u32 = 0;
+        while (j < 3) : (j += 1) {
+            var i: u32 = 0;
+            while (i < 3) : (i += 1) l.values[l.index(i, j, k)] = fixed.fromInt(@intCast(2 * i + 3 * j + 5 * k));
+        }
+    }
+    try std.testing.expectEqual(fixed.fromInt(0), l.sampleAt(.{ 0, 0, 0 }));
+    try std.testing.expectEqual(fixed.fromInt(2), l.sampleAt(.{ fixed.ONE, 0, 0 }));
+    try std.testing.expectEqual(fixed.fromInt(10), l.sampleAt(.{ fixed.ONE, fixed.ONE, fixed.ONE }));
+    try std.testing.expectEqual(fixed.fromInt(5), l.sampleAt(.{ fixed.HALF, fixed.HALF, fixed.HALF })); // 1 + 1.5 + 2.5
+    try std.testing.expectEqual(fixed.fromInt(4), l.sampleAt(.{ 0, fixed.HALF, fixed.HALF })); // 0 + 1.5 + 2.5
+    try std.testing.expectEqual(fixed.fromInt(3), l.sampleAt(.{ fixed.ONE + fixed.HALF, 0, 0 }));
+    // Past the grid clamps to the edge.
+    try std.testing.expectEqual(fixed.fromInt(4), l.sampleAt(.{ fixed.fromInt(9), 0, 0 }));
+    try std.testing.expectEqual(fixed.fromInt(0), l.sampleAt(.{ -fixed.fromInt(9), 0, 0 }));
+    try std.testing.expectEqual(fixed.fromInt(20), l.sampleAt(.{ fixed.fromInt(9), fixed.fromInt(9), fixed.fromInt(9) }));
+    // Gradient: (2, 3, 5) per cell everywhere — middle and edges alike.
+    try std.testing.expectEqual(Vec{ fixed.fromInt(2), fixed.fromInt(3), fixed.fromInt(5) }, l.gradientAt(.{ fixed.ONE, fixed.ONE, fixed.ONE }));
+    try std.testing.expectEqual(Vec{ fixed.fromInt(2), fixed.fromInt(3), fixed.fromInt(5) }, l.gradientAt(.{ 0, 0, 0 }));
+    try std.testing.expectEqual(Vec{ fixed.fromInt(2), fixed.fromInt(3), fixed.fromInt(5) }, l.gradientAt(.{ fixed.fromInt(2), fixed.fromInt(2), fixed.fromInt(2) }));
+    // A coarser cell halves the per-cell slope of the same field.
+    l.cell = 2 * fixed.ONE;
+    try std.testing.expectEqual(Vec{ fixed.fromInt(1), @divExact(fixed.fromInt(3), 2), @divExact(fixed.fromInt(5), 2) }, l.gradientAt(.{ 2 * fixed.ONE, 2 * fixed.ONE, 2 * fixed.ONE }));
 }

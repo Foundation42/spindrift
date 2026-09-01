@@ -28,6 +28,7 @@ pub fn build(b: *std.Build) void {
     // The first kernel, embedded: drift-run mounts it when no --kernel is
     // given, and the gates mount it so the shipped text is the tested text.
     mod.addAnonymousImport("embers.rill", .{ .root_source_file = b.path("kernels/embers.rill") });
+    mod.addAnonymousImport("smoke.rill", .{ .root_source_file = b.path("kernels/smoke.rill") });
 
     const lib = b.addLibrary(.{
         .linkage = .static,

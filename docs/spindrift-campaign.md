@@ -39,9 +39,9 @@ Each gate names the mutation that must bite. A gate that passes under its mutati
 
 **G2 — Kernels are operators.** Every spindrift word walks the standing wire gate, the argument-spelling gate (adjacent wordless optionals refused), the registry-walk typing gate and the manual/registry identity gate. Structural — the gate is the existing gates admitting the row column. Mutation: register a word with two adjacent wordless optionals; the registry refuses it at build. **Green and bitten, beat 1.**
 
-**G3 — Fields in.** A spray that samples `$wind` bends; unmount the caster and the trail straightens within the deposit's decay. Mutation: disable sampling in the kernel; the trail is straight from tick 0 and the gate fails.
+**G3 — Fields in.** A spray that samples `$wind` bends; unmount the caster and the trail straightens within the deposit's decay. Mutation: disable sampling in the kernel; the trail is straight from tick 0 and the gate fails. **Green and bitten, beat 2.**
 
-**G4 — Fields out.** A smoke spray casts `$dankness`; an ear downstream reads above zero; the spray unmounts and the ear reads zero after the decay (casts are owned by their caster — ownership is the ceiling). Mutation: remove the cast line; the ear never rises.
+**G4 — Fields out.** A smoke spray casts `$dankness`; an ear downstream reads above zero; the spray unmounts and the ear reads zero (casts are owned by their caster — ownership is the ceiling: the bag goes with its owner, at once). Mutation: remove the cast line; the ear never rises. **Green and bitten, beat 2.**
 
 **G5 — The leaf.** Matryoshka renders the population through `LEAF_PARTICLES`. Ordinary path first (rule 7): with no spray mounted, every frozen ref holds at AE=0. Then: a capture with one spray mounted differs from the frozen ref, and a capture with the same spray unmounted is AE=0 again. Mutation: leaf returns no hit; the mounted capture equals the frozen ref and the gate fails.
 
@@ -131,6 +131,8 @@ Word admission follows the tier-2 discipline: nothing enters on prose; every wor
 
 ### 3.4 Fields, both ways
 
+*Ruled 2026-09-01 (beat 1 accepted), built beat 2.* The read is spelled `$wind at row.pos` (value) and `$wind grad at row.pos` (gradient, toward the caster); bare `$wind` is a parse error in a kernel too; the parser desugars to the host's word `hear`. Coupling via `#tag` applies at the spray's authored ear: a coupled deposit reaches a spray only while it carries the tag. The exact-kernel bill was zero: the radial falloff is evaluated at rasterisation on the host, once per lattice point, and the row only trilinear-samples integers — no `sqrt`, no squares, no route-around.
+
 **Sampling.** Fields are receiver-summed over live casters. That is right for a dozen ears and wrong for 10⁵ rows. When an archetype declares `samples $wind cell 0.5`, spindrift rasterises the channel's deposit bag onto a lattice over the spray's bounds once per tick (sum of radial kernels; cross-tick coalesce already keeps the bag small), and rows trilinear-sample it. The lattice is re-derivable, stays out of the log, and is the same shape as the Sponge cache. Coupling via `#tag` applies at the spray's ear exactly as for entity-bound ears.
 
 **Casting.** v1 casts one aggregate deposit per spray per tick: centre of mass, amplitude ∝ live count × per-row amplitude, radius from bounds. Cross-tick coalesce replaces it each tick. Per-row casts are a deferred fill (§6).
@@ -174,7 +176,7 @@ A Spray applet, one file: `intent:`/`about:`/`label:`/`icon:`, sliders bound in 
 
 **P1 — Spray tenant and the row plane.** The eleventh tenant with three-format serialization; `spray` console verbs; the row-legal column and the row runtime in rill; the stand-in deleted and the three words as rill row words; G1, G2. First spray-level rill drives a spray on the plane. **Beat 1** (`docs/cc-report-beat1.md`).
 
-**P2 — Fields.** Lattice materialisation for sampled channels; aggregate cast; `$wind at pos`; G3, G4. Customer: smoke that leans in the wind and makes a room dank.
+**P2 — Fields.** Lattice materialisation for sampled channels; aggregate cast; `$wind at row.pos`; G3, G4. Customer: smoke that leans in the wind and makes a room dank. **Beat 2** (`docs/cc-report-beat2.md`).
 
 **P3 — Leaf, appearance, applet.** `LEAF_PARTICLES`, billboard leaf with its coverage function, appearance links, dirty-chunk upload, Spray applet, `:::curve`; G5. First captures on the customer scenes.
 
@@ -237,6 +239,9 @@ Deferred fills, each with a trigger:
 8. Appearance as an archetype link (sound-emitter precedent). **Ratified.**
 9. Spray as the eleventh spine tenant with full three-format serialization. **Ratified.**
 10. Particle-light cap per spray in v1 — 4. **Ratified.**
+12. *(beat 1 accepted)* **Write-verbs rev 3 is ratified, §5 all five**, and the spray is `hold`'s second customer beside `camera/pose/*`: the rig authors the base; a rill modulates with `write … add|mul|stops` as a lane that folds in owner order and retracts on unmount; a rill seizes with `write … hold`; a program's bare `write` on a rig knob is refused at mount naming `hold`; console/applet bare `write` sets the authored value. Each spray knob declares its acceptance mask on `^spray` — `rate` add|mul, `speed` add|mul, `spread` add, `life` mul — refused at mount for a mode not accepted. **Interim** until the verb lands: `rate` and `speed` take the existing modulation lane with `.mul` semantics so the CHOPs example works today; recorded with the write-verbs landing as its trigger. Write-verbs is a campaign with a customer waiting; whether it is briefed after P2 or folds the spray knobs into its first beat is said in the P2 report.
+13. *(beat 1 accepted)* **`spray dump` hands its bytes to a host channel**; the verb does not touch the filesystem. The host decides where bytes land — a file when headless, the bus over the wire.
+14. *(beat 1 accepted)* **Broadcast floors stay as they are.** A knob written as `9.8` reaches every row as 9.7999, the same floor a literal takes at mount. Trigger as recorded: a customer scene that wants round-to-nearest at the boundary.
 11. *(beat 0 fork 5, ruled)* **Dyadic Q16.16 cells.** Matryoshka's per-scene BVH quantisation lattice is **not** dyadic in the same units (gauge: `extent / (2²⁰ − 1)`; slim nodes: dyadic per BVH with its own exponent), so position → Morton key is not a shift: the upload quantises once per dirty chunk, deterministically.
 
 ## 8. Ledger practices this campaign is likely to add

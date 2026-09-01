@@ -7,7 +7,7 @@ feel reassured. Chris has asked for this in every sibling repo; a suite
 run per edit makes the harness the activity rather than the work.
 
     zig build test -Dtest-filter=perish     # one gate, milliseconds
-    zig build test                          # 40, and quick — before a commit
+    zig build test                          # 55, and quick — before a commit
 
 The whole suite here is cheap (no GPU, no engine), so the calculus is
 gentler than matryoshka's: run it when you have changed code, not after
@@ -77,10 +77,18 @@ scene and a read-aloud before it needs a kernel, and it registers through
 `words.register` with `row.only` set and an exact integer kernel — the G2
 audit and the manual parity gate refuse anything less.
 
-- **Four phases, one parallel.** Broadcasts, spawn (serial), the sweep
-  (kernel, integrate, age — chunked), reap (serial, ascending). `perish`
-  marks; only the reap kills. A kill inside the sweep is a race that now
-  crashes the chunking gate rather than passing it.
+- **Six phases, one parallel.** Broadcasts, materialise (every sampled
+  channel's bag onto a lattice), spawn (serial), the sweep (kernel,
+  integrate, age — chunked), reap (serial, ascending), cast (one aggregate
+  per channel). `perish` marks; only the reap kills. A kill inside the
+  sweep is a race that now crashes the chunking gate rather than passing
+  it.
+- **The field model in `fields.zig` is matryoshka's, transcribed.** If the
+  engine's kernel or decay changes, this copy changes in the same beat —
+  the mock exists so an ear and a row agree, and a mock that drifts from
+  the engine is a gate that watches nothing. A gate over a field must
+  vary on every axis it claims (the lattice gate once did not, and a
+  mutation that dropped two of three lerps survived it).
 - **A spray with a mounted kernel must not be moved** — the runtime holds
   a pointer into it. Heap-allocate or keep it in a stable slot.
 - **Integration is not a word.**

@@ -64,6 +64,24 @@ pub fn toF64(x: Fixed) f64 {
     return @as(f64, @floatFromInt(x)) / @as(f64, @floatFromInt(ONE));
 }
 
+/// The field boundary's other direction: a row position handed to the
+/// host's f32 physics (a cast's centre, a lattice grid point). Once per
+/// tick per value, never inside the loop.
+pub fn toF32(x: Fixed) f32 {
+    return @floatCast(toF64(x));
+}
+
+/// A host f32 (a rasterised field value) quantised onto the row's number:
+/// floor, saturating at the format's rails. The one place the field enters
+/// the sim, once per lattice point per tick.
+pub fn fromF32Saturating(v: f32) Fixed {
+    const scaled = @floor(@as(f64, v) * @as(f64, @floatFromInt(ONE)));
+    if (scaled != scaled) return 0; // NaN reads as nothing
+    if (scaled >= std.math.maxInt(Fixed)) return std.math.maxInt(Fixed);
+    if (scaled <= std.math.minInt(Fixed)) return std.math.minInt(Fixed);
+    return @intFromFloat(scaled);
+}
+
 pub const ParseError = error{ BadNumber, Overflow };
 
 /// `-9.8`, `0.25`, `3`, `+12.` — decimal text to Q16.16 with integer

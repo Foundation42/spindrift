@@ -1,7 +1,7 @@
 # Implementation notes — the ledger
 
-**Status:** P1 (the spray tenant and the row plane) built, G0–G2 green and
-mutation-bitten. 2026-09-01.
+**Status:** P2 (fields both ways) built, G0–G4 green and mutation-bitten.
+2026-09-01.
 
 Everything here is a decision made while building
 [spindrift-campaign.md](spindrift-campaign.md), recorded so the next
@@ -312,3 +312,107 @@ the campaign's §7.3. Every one landed in the campaign doc, marked *ruled*.
 `spawn` was considered for one sentence and dropped: `spawn` is the word
 every particle system already says, and the read-aloud found nothing
 wrong with it.
+
+## P2 — fields, both ways (2026-09-01, §3.4, G3, G4)
+
+**Rulings that opened the beat (Christian, beat 1 accepted):** write-verbs
+rev 3 ratified with the spray as `hold`'s second customer and the interim
+`.mul` lane for `rate`/`speed` (campaign §7.12); `spray dump` hands bytes
+to a host channel (§7.13); broadcast floors stay (§7.14). The read is
+`$wind at row.pos`, bare `$wind` a parse error in a kernel too; coupling
+via `#tag` at the spray's authored ear; one aggregate cast per spray per
+tick, replaced cross-tick; customer: smoke that leans in the wind and
+makes a room dank. Still no picture.
+
+- **The exact-kernel bill is zero, said plainly.** The radial falloff
+  `k = (1 − (d/r)²)²` is evaluated at RASTERISATION on the host, in f32,
+  once per lattice point per tick — that is the boundary, crossed once.
+  The row trilinear-samples Q16.16 integers and takes central
+  differences; no `sqrt`, no squared-distance spelling, nothing to earn
+  or route around this beat. `sqrt` stays recorded for the first kernel
+  that wants a distance to a point.
+- **The field model is the engine's, transcribed** (`fields.zig`):
+  contribution `A·exp(−(t − born)/τ)`, cull below ε, restate-replaces on
+  a later tick and sums within one, `k = q²` with `∇k = −(4q/r²)(at −
+  pos)` toward the caster, value clamped by the channel and the gradient
+  from the unclamped sum, coupling by audience. A second copy on purpose:
+  the mock must agree with the engine and spindrift cannot import it.
+  **Recorded-not-built: one field model in a sibling both import. Trigger:
+  a third client.** The spatial kernel is applied by spindrift in both
+  the mock and the engine (the bridge hands the bag; the spray
+  rasterises), so an ear and a row agree about the same deposit by
+  construction.
+- **The `Fields` host interface is three thunks**: `bag` (a channel's live
+  deposits with decay applied, plus the clamp; null = undeclared), `cast`
+  (replace the owner's ONE aggregate on a channel, whatever its position
+  — the ruled cross-tick coalesce, which the engine's same-place rule does
+  not give a moving centre of mass), `withdraw` (the owner's bag goes with
+  the owner). Same fn-pointer discipline as `World` and rill's `Plane`.
+- **The tick has six phases now**: broadcasts, **materialise**, spawn,
+  sweep, reap, **cast**. Materialise is the field's one entry into the
+  sim: the box is last tick's rows plus the spawn point padded by a cell,
+  the cell doubles until the grid fits 33 points an axis (`coarsened`
+  said in stats, never a bigger allocation), every point sums the kernel
+  over the deposits the spray hears and floors to Q16.16. Cast is the
+  field's one exit: centre of mass as an exact integer mean converted
+  once, amplitude = per-row × live, radius = half the bounds' diagonal
+  floored at a cell. No live rows, no cast — the last one decays alone.
+- **`hear` is spindrift's word** (`words.zig`): `hear $chan [grad] at
+  <pos>`, statics `channel` (cast's kind) and a `grad` flag, keyword port
+  `at`. The parser desugars `$wind at row.pos` to it in a kernel (rill
+  `0bc2d68`). `mountKernel` refuses a `hear` of a channel the spray does
+  not sample, naming the declaration to add, and any `hear` on a spray
+  with no field store. A channel the HOST never declared leaves the
+  lattice dead and `hear` refuses per row by name — never a quiet zero.
+- **Unmount withdraws the casts.** G4 says "the ear reads zero after the
+  decay"; the engine's rule says "drop the owner and the whole bag goes,
+  whatever each deposit's remaining life". The engine's rule is the
+  ruling that was ratified (ownership is the ceiling), so unmount
+  withdraws and the ear reads zero at once. Recorded so the two sentences
+  are known to differ and which one won.
+- **`drift-run` grew the field flags** (`--channel`, `--samples`,
+  `--casts`, `--carried`, `--ear`) and a cast door: the mounted rill's
+  `cast` lands in the mock store under one owner, as a rill's does in the
+  engine by mount order. The customer scene runs headless:
+  `kernels/smoke.rill` with a wind rill and an ear that rises.
+- **A real lean from a nearly dead deposit is not a bug.** G3's first
+  draft called rows born between the caster's unmount and the deposit's
+  cull "straight"; they leaned by 168/65536 of a cell per second — the
+  gradient of a deposit at 1.1 ε. The gate's window moved; the physics
+  did not.
+
+### P2 mutations — what each gate caught (12/12 bitten, one after a rewrite)
+
+| # | mutation | bitten by |
+|---|---|---|
+| Q1 | `hear` answers zero (sampling disabled) | G3; the hear gate |
+| Q2 | the coupling filter dropped at rasterisation | coupling |
+| Q3 | the cast removed | G4 ×2 |
+| Q4 | unmount does not withdraw | G4 |
+| Q5 | the aggregate trails instead of replacing | mock fields; G4 |
+| Q6 | amplitude per row, not × live | G4 |
+| Q7 | kernel `q` instead of `q²` | mock kernel; lattice; hear |
+| Q8 | an undeclared channel reads as a zero lattice | the dead-lattice gate |
+| Q9 | decay never culls | mock decay; G3 (the trail never straightens) |
+| Q10 | gradient sign flipped | lattice; hear; G3; G0-with-a-field |
+| Q11 | trilinear reads the nearest point on y and z | **survived the first draft** — the lattice gate's field varied only along x, so the lerps it dropped were lerps of equals. Rewritten as `2x + 3y + 5z`, exact under trilinear everywhere; bites. |
+| Q12 | the unsampled-channel check at mount dropped | the mount-refusal gate |
+
+Rill's one: the `$`-desugar gated both ways and on the plane.
+
+### Recorded, not built
+
+| what | trigger |
+|---|---|
+| one field model both repos import | a third client of the field model |
+| `sqrt` as an earned integer kernel | the first kernel that wants a distance |
+| lattice gradient by trilinear of gradients (today: central differences at the nearest point) | a scene where the piecewise-constant slope shows |
+| per-row casts | the first scene where an aggregate deposit is visibly wrong (campaign §6) |
+| the write-verbs verb on spray knobs (the interim `.mul` lane is in matryoshka) | write-verbs beat 1 |
+
+### Rejected names
+
+`listen`/`sense` for the field read (`hear` reads as the ear's verb, and
+the ear tenant already listens); `read` (too general, and `write`'s
+mirror would promise a plane read it is not); `dank` as a channel name in
+the docs stayed `$dankness` because the campaign said so.

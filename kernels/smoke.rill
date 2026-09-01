@@ -1,0 +1,13 @@
+// smoke — the second kernel: fields in.
+//
+// The spray's ^ declares `samples $wind cell 0.5`; every tick the wind's
+// deposit bag is rasterised onto a lattice over the spray's bounds, and
+// `$wind grad at row.pos` reads the gradient there — toward the wind's
+// source. A negative `lean` pushes the smoke away from it, so the column
+// leans downwind and straightens when the caster is unmounted and its
+// deposit has decayed. The cast the other way — `casts $dankness` — is
+// declared on the ^spray too: one aggregate per tick, not a row's business.
+spawn
+gravity plane.drift.@self.gravity
+$wind grad at row.pos | mul plane.drift.@self.lean | write row.vel add
+perish

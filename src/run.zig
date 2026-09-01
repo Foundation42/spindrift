@@ -35,6 +35,11 @@
 //!   --chunk <n>            rows per job (default 1024)
 //!   --rill <file.rill>     mount a program on the mock plane beside the spray
 //!   --seed <path>=<v>      set a plane path before mount (repeatable)
+//!   --channel <$c[:eps[:decay_ms]]>   declare a field channel on the mock store (repeatable)
+//!   --samples <$c:cell>    the spray samples $c on a lattice of this cell (repeatable)
+//!   --casts <$c:amp>       the spray casts $c, amp per live row, radius from bounds (repeatable)
+//!   --carried <#tag>       a tag the spray carries, for coupled deposits (repeatable)
+//!   --ear <$c@x,y,z>       print the mock ear's reading of $c at a post each tick (repeatable)
 //!   --every <n>            print a line every n ticks (default 1; 0 = only the end)
 //!   --dump <file>          write the population after the last tick
 
@@ -52,6 +57,7 @@ const MAX_TICKS = 1_000_000;
 const embers = @embedFile("embers.rill");
 
 const Feed = struct { path: []const u8, value: []const u8 };
+const Ear = struct { channel: []const u8, at: [3]f32 };
 
 fn usage() void {
     std.debug.print(
@@ -74,11 +80,20 @@ fn usage() void {
         \\  --chunk <n>           rows per job (default 1024)
         \\  --rill <file.rill>    mount a program beside the spray
         \\  --seed <path>=<v>     set a plane path before mount (repeatable)
+        \\  --channel <$c[:eps[:decay_ms]]>  declare a field channel (repeatable)
+        \\  --samples <$c:cell>   the spray hears $c on a lattice of this cell (repeatable)
+        \\  --casts <$c:amp>      the spray casts $c, amp per live row (repeatable)
+        \\  --carried <#tag>      a tag the spray carries (repeatable)
+        \\  --ear <$c@x,y,z>      print an ear's reading of $c at a post each tick (repeatable)
         \\  --every <n>           print every n ticks (default 1; 0 = end only)
         \\  --dump <file>         write the population after the last tick
         \\
         \\Example — 400 embers a second under gravity, one second, dumped:
         \\  drift-run --rate 400 --speed 3 --spread 1 --gravity -9.8 --life 800 --ticks 60 --dump embers.struple
+        \\Example — smoke that leans in the wind and makes a room dank:
+        \\  drift-run --kernel kernels/smoke.rill --gravity 0.5 --seed plane.drift.@em.lean=-1 \\
+        \\    --channel '$wind:0.01:1000' --channel '$dankness:0.001:2000' --samples '$wind:0.5' \\
+        \\    --casts '$dankness:0.02' --rill wind.rill --ear '$dankness@0,3,0' --ticks 120
         \\
     , .{});
 }
@@ -101,6 +116,45 @@ const Options = struct {
     every: u32 = 1,
     dump_path: ?[]const u8 = null,
 };
+
+/// `$wind:0.01:1000` — name, epsilon, decay in ms; the last two optional.
+fn parseChannel(text: []const u8) !spindrift.fields.Channel {
+    var it = std.mem.splitScalar(u8, text, ':');
+    const name = it.next() orelse return error.BadChannel;
+    if (name.len < 2 or name[0] != '$') return error.BadChannel;
+    var ch = spindrift.fields.Channel{ .name = name };
+    if (it.next()) |eps| ch.epsilon = try std.fmt.parseFloat(f32, eps);
+    if (it.next()) |ms| ch.default_decay_ns = (try std.fmt.parseInt(u64, ms, 10)) * std.time.ns_per_ms;
+    if (it.next() != null) return error.BadChannel;
+    return ch;
+}
+
+/// `$wind:0.5` — a sampled channel and its cell, integer-parsed.
+fn parseSampled(text: []const u8) !spindrift.spray.Sampled {
+    const colon = std.mem.indexOfScalar(u8, text, ':') orelse return error.BadSampled;
+    const name = text[0..colon];
+    if (name.len < 2 or name[0] != '$') return error.BadSampled;
+    const cell = try fixed.parseDecimal(text[colon + 1 ..]);
+    if (cell <= 0) return error.BadSampled;
+    return .{ .channel = name, .cell = cell };
+}
+
+/// `$dankness:0.02` — a cast channel and its per-row amplitude.
+fn parseCasting(text: []const u8) !spindrift.spray.Casting {
+    const colon = std.mem.indexOfScalar(u8, text, ':') orelse return error.BadCasting;
+    const name = text[0..colon];
+    if (name.len < 2 or name[0] != '$') return error.BadCasting;
+    return .{ .channel = name, .per_row_amplitude = try std.fmt.parseFloat(f32, text[colon + 1 ..]) };
+}
+
+/// `$dankness@0,3,0` — a channel and a post.
+fn parseEar(text: []const u8) !Ear {
+    const at = std.mem.indexOfScalar(u8, text, '@') orelse return error.BadEar;
+    const name = text[0..at];
+    if (name.len < 2 or name[0] != '$') return error.BadEar;
+    const v = try parseVec(text[at + 1 ..]);
+    return .{ .channel = name, .at = .{ fixed.toF32(v[0]), fixed.toF32(v[1]), fixed.toF32(v[2]) } };
+}
 
 fn parseVec(text: []const u8) !fixed.Vec {
     var out: fixed.Vec = undefined;
@@ -165,6 +219,16 @@ pub fn main() !u8 {
     var o = Options{};
     var seeds: std.ArrayListUnmanaged(Feed) = .empty;
     defer seeds.deinit(gpa);
+    var channels: std.ArrayListUnmanaged(spindrift.fields.Channel) = .empty;
+    defer channels.deinit(gpa);
+    var samples: std.ArrayListUnmanaged(spindrift.spray.Sampled) = .empty;
+    defer samples.deinit(gpa);
+    var casts: std.ArrayListUnmanaged(spindrift.spray.Casting) = .empty;
+    defer casts.deinit(gpa);
+    var carried: std.ArrayListUnmanaged([]const u8) = .empty;
+    defer carried.deinit(gpa);
+    var ears: std.ArrayListUnmanaged(Ear) = .empty;
+    defer ears.deinit(gpa);
 
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
@@ -230,6 +294,17 @@ pub fn main() !u8 {
         } else if (std.mem.eql(u8, a, "--seed")) {
             const eq = std.mem.indexOfScalar(u8, v, '=') orelse return bad(a, v, "<path>=<value>");
             try seeds.append(gpa, .{ .path = v[0..eq], .value = v[eq + 1 ..] });
+        } else if (std.mem.eql(u8, a, "--channel")) {
+            try channels.append(gpa, parseChannel(v) catch return bad(a, v, "$name[:epsilon[:decay_ms]]"));
+        } else if (std.mem.eql(u8, a, "--samples")) {
+            try samples.append(gpa, parseSampled(v) catch return bad(a, v, "$name:cell"));
+        } else if (std.mem.eql(u8, a, "--casts")) {
+            try casts.append(gpa, parseCasting(v) catch return bad(a, v, "$name:amp"));
+        } else if (std.mem.eql(u8, a, "--carried")) {
+            if (v.len < 2 or v[0] != '#') return bad(a, v, "#tag");
+            try carried.append(gpa, v);
+        } else if (std.mem.eql(u8, a, "--ear")) {
+            try ears.append(gpa, parseEar(v) catch return bad(a, v, "$name@x,y,z"));
         } else if (std.mem.eql(u8, a, "--every")) {
             o.every = std.fmt.parseInt(u32, v, 10) catch return bad(a, v, "a count");
         } else if (std.mem.eql(u8, a, "--dump")) {
@@ -271,6 +346,14 @@ pub fn main() !u8 {
     try rill.registerCore(&reg);
     try spindrift.words.register(&reg);
 
+    // The mock field store: declared channels, and a cast door so the
+    // mounted rill's `cast` lands here under one owner — as a rill's does
+    // in the engine, by mount order.
+    var store = spindrift.MockFields.init(gpa);
+    defer store.deinit();
+    for (channels.items) |c| try store.declare(c);
+    var door = spindrift.MockFields.CastDoor{ .inner = mock.asPlane(), .fields = &store, .owner = "rill" };
+
     var prog: ?rill.Program = null;
     defer if (prog) |*p| p.deinit();
     var rt: ?rill.Runtime = null;
@@ -286,7 +369,7 @@ pub fn main() !u8 {
             std.debug.print("{s}:{d}:{d}: {s}\n(parse refused: {s})\n", .{ path, diag.line, diag.col, diag.msg(), @errorName(err) });
             return 1;
         };
-        rt = rill.Runtime.mount(gpa, &prog.?, mock.asPlane(), .{ .log_fn = logThunk, .error_fn = errorThunk }) catch |err| {
+        rt = rill.Runtime.mount(gpa, &prog.?, door.asPlane(), .{ .log_fn = logThunk, .error_fn = errorThunk }) catch |err| {
             std.debug.print("mount refused: {s}\n", .{@errorName(err)});
             return 1;
         };
@@ -306,6 +389,10 @@ pub fn main() !u8 {
     spray.pos = o.pos;
     spray.aim = o.aim;
     spray.chunk = o.chunk;
+    spray.fields = store.asFields();
+    spray.samples = samples.items;
+    spray.casts = casts.items;
+    spray.carried = carried.items;
 
     var kernel_source: []const u8 = embers;
     var kernel_owned: ?[]u8 = null;
@@ -340,12 +427,15 @@ pub fn main() !u8 {
     std.debug.print(" spread {s}", .{fixed.format(spray.knobs.spread, &nb)});
     std.debug.print(" life {d}ms", .{spray.knobs.life_ns / std.time.ns_per_ms});
     std.debug.print(" gravity {s}\n", .{fixed.format(o.gravity, &nb)});
+    for (samples.items) |sm| std.debug.print("  samples {s} cell {s}\n", .{ sm.channel, fixed.format(sm.cell, &nb) });
+    for (casts.items) |c| std.debug.print("  casts {s} amp {d} per row, radius from bounds\n", .{ c.channel, c.per_row_amplitude });
 
     var path_buf: [256]u8 = undefined;
     var seen_writes: usize = 0;
     var t: u32 = 0;
     while (t <= o.ticks) : (t += 1) {
         const now = rill.Now{ .frame = t, .time_ns = @as(u64, t) * o.dt_ms * std.time.ns_per_ms };
+        store.tick(now.time_ns);
         if (rt) |*r| try r.tick(now);
         // The plane wins over the command line, knob by knob, each tick.
         if (knobFromPlane(&mock, &path_buf, o.name, "rate")) |v| spray.knobs.rate = v;
@@ -364,6 +454,17 @@ pub fn main() !u8 {
 
         if (spray.last.refusals > 0) {
             std.debug.print("     ! kernel refused {d} row(s): {s}\n", .{ spray.last.refusals, spray.last_refusal.text() });
+        }
+        if (spray.last.bags_missing > 0) std.debug.print("     ! {d} sampled channel(s) the store does not declare (--channel)\n", .{spray.last.bags_missing});
+        if (spray.last.cast_refusals > 0) std.debug.print("     ! {d} cast(s) refused — declare the channel (--channel)\n", .{spray.last.cast_refusals});
+        for (ears.items) |e| {
+            if ((o.every > 0 and t % o.every == 0) or t == o.ticks) {
+                if (store.sample(e.channel, e.at, true, &.{})) |r| {
+                    std.debug.print("   )) ear {s} at ({d:.1},{d:.1},{d:.1}) = {d:.4}\n", .{ e.channel, e.at[0], e.at[1], e.at[2], r.value });
+                } else {
+                    std.debug.print("   )) ear {s}: no such channel\n", .{e.channel});
+                }
+            }
         }
         const last = t == o.ticks;
         if ((o.every > 0 and t % o.every == 0) or last) {

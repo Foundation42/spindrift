@@ -35,6 +35,7 @@ pub const fixed = @import("fixed.zig");
 pub const population = @import("population.zig");
 pub const world = @import("world.zig");
 pub const dump = @import("dump.zig");
+pub const fields = @import("fields.zig");
 pub const spray = @import("spray.zig");
 pub const words = @import("words.zig");
 
@@ -46,6 +47,8 @@ pub const Handle = population.Handle;
 pub const World = world.World;
 pub const Floor = world.Floor;
 pub const Nowhere = world.Nowhere;
+pub const Fields = fields.Fields;
+pub const MockFields = fields.MockFields;
 pub const Spray = spray.Spray;
 pub const Knobs = spray.Knobs;
 pub const Stats = spray.Stats;
@@ -56,7 +59,8 @@ test {
     _ = @import("population.zig"); // rows, freelist, handles
     _ = @import("world.zig"); // the query interface and the floor
     _ = @import("dump.zig"); // one canonical struple
-    _ = @import("spray.zig"); // knobs, the tick, the kernel mount
+    _ = @import("fields.zig"); // the field interface, the kernel, the mock store
+    _ = @import("spray.zig"); // knobs, the tick, the kernel mount, lattices, the aggregate cast
     _ = @import("words.zig"); // spawn, gravity, perish
     _ = @import("tests.zig"); // the gates: G0 and its mutations
 }

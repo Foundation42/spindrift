@@ -14,7 +14,7 @@ fields. Plane prefix `drift/`.
 plane.ents.@torch.$alarm | above 0.5 0.3 | kick 50ms 2s | mul 400 | write plane.drift.@sparks.rate
 ```
 
-## Status — P1: the spray, and a kernel that is rill text
+## Status — P2: fields, both ways
 
 **A kernel is a rill program whose plane is the row.** You mount a rill; a
 kernel is a rill mounted on a spray rather than on the world:
@@ -35,13 +35,28 @@ a row plane, the spray with its four-phase tick over `common/jobs.zig`, the
 three words, the dump, and `drift-run`. Everything in the loop is Q16.16;
 no float enters the sim.
 
-**G0, G1 and G2 are green and mutation-bitten** — determinism of the dump,
-the population on the plane (`plane.drift.@<name>.count`, a second rill
-thresholds it, unmount says zero), and the words as operators through
-rill's own registration gates. Twelve hand mutations in this beat, twelve
-bites, one of them a crash; the ledger records which gate caught which.
+**Fields, both ways.** A `^spray` that `samples $wind cell 0.5` gets the
+channel's live deposits rasterised onto a lattice over its bounds once a
+tick, and a kernel reads `$wind at row.pos` (value) or `$wind grad at
+row.pos` (gradient, toward the caster) as exact integers. A spray that
+`casts $dankness amp 0.02` deposits one aggregate a tick — centre of mass,
+amplitude × live, radius from bounds — that the host replaces, and
+withdraws on unmount. The field model is the engine's; the exact-kernel
+bill was zero.
 
-No rendering, no fields, no collision words yet; each has its phase in
+```rill
+// kernels/smoke.rill — leans away from the wind's source
+spawn
+gravity plane.drift.@self.gravity
+$wind grad at row.pos | mul plane.drift.@self.lean | write row.vel add
+perish
+```
+
+**G0–G4 are green and mutation-bitten.** Twelve hand mutations this beat,
+twelve bites, one after a gate was rewritten to vary on every axis; the
+ledger records which gate caught which.
+
+No rendering or collision words yet; each has its phase in
 `docs/spindrift-campaign.md`. The spray tenant on matryoshka's spine lands
 beside this in matryoshka's own repo.
 
@@ -51,6 +66,9 @@ beside this in matryoshka's own repo.
 zig build                                   # library + drift-run
 zig build run -- --rate 400 --speed 3 --spread 1 --gravity -9.8 --life 800 --ticks 60 --dump embers.struple
 zig build run -- --kernel my.rill --rill hud.rill   # your kernel, a rill driving the knobs
+zig build run -- --kernel kernels/smoke.rill --gravity 0.5 --seed plane.drift.@em.lean=-1 \
+  --channel '$wind:0.01:1000' --channel '$dankness:0.001:2000' --samples '$wind:0.5' \
+  --casts '$dankness:0.02' --rill wind.rill --ear '$dankness@0,3,0'   # smoke in the wind
 python3 tools/read_dump.py embers.struple   # the struple Python port reads it back
 zig build test                              # the gates
 ```
@@ -66,9 +84,10 @@ tick, and two runs with the same flags print the same digest.
 | `src/population.zig` | SoA rows, freelist, `(id, gen)` handles, the row plane a kernel mounts on |
 | `src/world.zig` | `World` vtable; `Floor` and `Nowhere` (the negative control) |
 | `src/dump.zig` | one canonical struple map per population |
-| `src/spray.zig` | knobs, the four-phase tick, kernel mount, what the spray says on the plane |
-| `src/words.zig` | `spawn`, `gravity`, `perish` — row words registered into rill |
-| `kernels/embers.rill` | the first kernel, embedded as `drift-run`'s default |
+| `src/fields.zig` | the `Fields` host interface, the engine's kernel, the mock store and its cast door |
+| `src/spray.zig` | knobs, the six-phase tick, kernel mount, lattices, the aggregate cast, what the spray says |
+| `src/words.zig` | `spawn`, `gravity`, `perish`, `hear` — row words registered into rill |
+| `kernels/embers.rill`, `kernels/smoke.rill` | the first two kernels; embers is `drift-run`'s default |
 | `docs/drift-words.md` | the words manual, parity-gated both ways |
 | `src/run.zig` | `drift-run` |
 | `src/tests.zig` | the gates, each with its named mutation |

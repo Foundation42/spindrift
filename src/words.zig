@@ -1,7 +1,8 @@
 //! words — spindrift's operators, registered into rill's registry like
 //! every other word.
 //!
-//! Three in beat 1 (campaign §3.3, ruled 2026-09-01), each a row word:
+//! Three in beat 1 and one in beat 2 (campaign §3.3, §3.4, ruled
+//! 2026-09-01), each a row word:
 //! meaningful only on a spray, with an exact integer kernel and `row.only`
 //! set. A plane program that names one is refused at PARSE by name — the
 //! "refuse at mount" the campaign asked for, one door earlier. (The first
@@ -73,6 +74,23 @@ fn kPerish(ctx: *row.Ctx) row.Error!void {
     if (s.pop.age_ns[r] >= s.pop.life_ns[r]) ctx.retire();
 }
 
+/// `hear $chan [grad] at <pos>` — the field read, spelled `$wind at
+/// row.pos` (the parser desugars to this). The spray's lattice for the
+/// channel, rasterised once this tick from the host's bag, trilinear at
+/// `pos`; `grad` gives the slope instead, toward the caster. A channel the
+/// spray does not sample is refused at mount by the spray; a lattice the
+/// host could not fill (an undeclared channel) refuses here, per row, by
+/// name — never a quiet zero.
+fn kHear(ctx: *row.Ctx) row.Error!void {
+    const s = try sprayOf(ctx);
+    const chan = ctx.statics[0].channel;
+    const want_grad = ctx.statics[1].word.len != 0;
+    const lat = s.lattice(chan) orelse return ctx.refuse("{s}: this spray does not sample {s}", .{ ctx.op.name, chan });
+    if (!lat.live) return ctx.refuse("{s}: {s} has no lattice this tick — the host declares no such channel", .{ ctx.op.name, chan });
+    const at = try ctx.vec3(0);
+    ctx.out[0] = if (want_grad) .{ .vec3 = lat.gradientAt(at) } else .{ .scalar = lat.sampleAt(at) };
+}
+
 pub const WORDS = [_]rill.OpDef{
     .{
         .name = "spawn",
@@ -97,6 +115,20 @@ pub const WORDS = [_]rill.OpDef{
         .class = .reads,
         .routes = .anywhere,
         .row = rowOnly(kPerish),
+        .eval = planeRefuse,
+    },
+    .{
+        .name = "hear",
+        .statics = &.{
+            .{ .name = "channel", .kind = .channel },
+            .{ .name = "grad", .kind = .word, .flag = true, .optional = true },
+        },
+        .inputs = &.{.{ .name = "at", .ty = Tag.any, .kw = true }},
+        .outputs = &.{.{ .name = "out", .ty = Tag.any }},
+        .help = "Row word: the field read — `$wind at row.pos` is the value of the spray's $wind lattice there, `$wind grad at row.pos` the slope toward the caster. The ^spray must `samples $wind cell <c>`.",
+        .class = .reads,
+        .routes = .anywhere,
+        .row = rowOnly(kHear),
         .eval = planeRefuse,
     },
 };
