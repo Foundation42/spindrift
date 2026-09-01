@@ -10,8 +10,9 @@
 //! stale scratch, and a dump that carried them would make two identical
 //! populations differ by what died when (recon R-b §5).
 //!
-//! Field-major like memory. The struple Python port reads this with
-//! `struple.unpack` and no spindrift code at all — `tools/read_dump.py`.
+//! Field-major like memory; `age` and `life` ride as fed nanoseconds. The
+//! struple Python port reads this with `struple.unpack` and no spindrift
+//! code at all — `tools/read_dump.py`.
 
 const std = @import("std");
 const struple = @import("struple");
@@ -38,18 +39,18 @@ fn rowValue(pop: *const Population, key_index: usize, id: u32) i64 {
         5 => pop.vel[0][id],
         6 => pop.vel[1][id],
         7 => pop.vel[2][id],
-        8 => pop.age[id],
-        9 => pop.life[id],
+        8 => @intCast(pop.age_ns[id]),
+        9 => @intCast(pop.life_ns[id]),
         10 => pop.seed[id],
         11 => pop.size[id],
         12 => pop.colour[0][id],
         13 => pop.colour[1][id],
         14 => pop.colour[2][id],
         15 => pop.kind[id],
-        16 => pop.user[0][id],
-        17 => pop.user[1][id],
-        18 => pop.user[2][id],
-        19 => pop.user[3][id],
+        16 => pop.userOf(id)[0],
+        17 => pop.userOf(id)[1],
+        18 => pop.userOf(id)[2],
+        19 => pop.userOf(id)[3],
         else => unreachable,
     };
 }

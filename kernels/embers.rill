@@ -1,0 +1,11 @@
+// embers — the first kernel: a rill mounted on a spray.
+//
+// Every line is an independent flow over the row. `spawn` launches a
+// newborn along the spray's aim at the spray's speed; `gravity` bends every
+// row's velocity by the spray's own knob, a broadcast — write
+// plane.drift.@<name>.gravity from any rill and every row feels it next
+// tick; `perish` retires a row when its age reaches its life. Integration
+// is not a word: a velocity moves its position.
+spawn
+gravity plane.drift.@self.gravity
+perish

@@ -1,32 +1,39 @@
-//! drift-run — mount an emitter on rill's mock plane over the mock floor,
-//! feed it fixed ticks, and dump the population.
+//! drift-run — mount a spray on rill's mock plane over the mock floor, feed
+//! it fixed ticks, and dump the population.
 //!
 //! `rill-run`'s shape (seeds, ticks, a fixed dt, a plane you can watch),
 //! with a population instead of a slot table. It lives here and not in rill
 //! because rill does not depend on spindrift (recon R-b §6). There is no
-//! engine: a knob path is only a name, and the emitter reads its knobs from
+//! engine: a knob path is only a name, and the spray reads its knobs from
 //! the same mock plane a mounted `.rill` writes to — so `--rill` is the
-//! CHOPs layer of campaign §3.3 driving a P0 emitter with zero new rill.
+//! CHOPs layer of campaign §3.3 driving a spray whose kernel is rill text.
+//!
+//! The kernel is `--kernel <file.rill>`, or `kernels/embers.rill` embedded.
+//! What the spray says on the plane (`plane.drift.@<name>.count`, `.bounds`,
+//! `.digest`) is fed to the mounted rill as deltas each tick — the mock
+//! plane records writes and notifies nobody, so this runner does what the
+//! engine's plane would.
 //!
 //! Usage:
 //!   drift-run [options]
 //!
+//!   --kernel <file.rill>   the kernel (default: the embedded embers)
 //!   --capacity <n>         rows (default 4096); the only allocation
-//!   --rng <u32>            the emitter seed (default 1)
+//!   --rng <u32>            the spray seed (default 1)
 //!   --fixed-dt <ms>        milliseconds per tick (default 16) — the ONLY clock
 //!   --ticks <n>            ticks fed after the epoch (default 60)
 //!   --rate <rows/s>        knobs, decimal text, integer-parsed (no float
 //!   --speed <cells/s>        enters the sim); the plane overrides these
 //!   --spread <cells/s>       at plane.drift.@<name>.<knob> when set
-//!   --gravity <cells/s²>
 //!   --life <ms>
-//!   --pos <x,y,z>          emitter position, cells
-//!   --aim <x,y,z>          spawn direction × 1.0 (default 0,1,0)
+//!   --gravity <cells/s²>   seeds plane.drift.@<name>.gravity (the embers kernel reads it)
+//!   --pos <x,y,z>          spray position, cells
+//!   --aim <x,y,z>          launch direction × 1.0 (default 0,1,0)
 //!   --world floor|none     the mock World (default floor)
-//!   --name <em>            the emitter's @name on the plane (default em)
-//!   --jobs <n>             worker threads for the kernel (default 0: inline)
+//!   --name <em>            the spray's @name on the plane (default em)
+//!   --jobs <n>             worker threads for the sweep (default 0: inline)
 //!   --chunk <n>            rows per job (default 1024)
-//!   --rill <file.rill>     mount a program on the mock plane beside the emitter
+//!   --rill <file.rill>     mount a program on the mock plane beside the spray
 //!   --seed <path>=<v>      set a plane path before mount (repeatable)
 //!   --every <n>            print a line every n ticks (default 1; 0 = only the end)
 //!   --dump <file>          write the population after the last tick
@@ -42,26 +49,30 @@ const Fixed = fixed.Fixed;
 
 const MAX_TICKS = 1_000_000;
 
+const embers = @embedFile("embers.rill");
+
 const Feed = struct { path: []const u8, value: []const u8 };
 
 fn usage() void {
     std.debug.print(
-        \\drift-run — mount an emitter on the mock plane, feed fixed ticks, dump the rows.
+        \\drift-run — mount a spray on the mock plane, feed fixed ticks, dump the rows.
         \\
         \\  drift-run [options]
         \\
+        \\  --kernel <file.rill>  the kernel (default: the embedded embers)
         \\  --capacity <n>        rows (default 4096)
-        \\  --rng <u32>           emitter seed (default 1)
+        \\  --rng <u32>           spray seed (default 1)
         \\  --fixed-dt <ms>       milliseconds per tick (default 16) — the only clock
         \\  --ticks <n>           ticks fed after the epoch (default 60)
-        \\  --rate --speed --spread --gravity <decimal>   knobs (cells, seconds)
+        \\  --rate --speed --spread <decimal>   knobs (cells, seconds)
         \\  --life <ms>           row lifetime
+        \\  --gravity <decimal>   seeds plane.drift.@<name>.gravity for the embers kernel
         \\  --pos <x,y,z>  --aim <x,y,z>
         \\  --world floor|none    the mock World (default floor)
-        \\  --name <em>           the emitter's @name on the plane (default em)
+        \\  --name <em>           the spray's @name on the plane (default em)
         \\  --jobs <n>            worker threads (default 0: inline)
         \\  --chunk <n>           rows per job (default 1024)
-        \\  --rill <file.rill>    mount a program beside the emitter
+        \\  --rill <file.rill>    mount a program beside the spray
         \\  --seed <path>=<v>     set a plane path before mount (repeatable)
         \\  --every <n>           print every n ticks (default 1; 0 = end only)
         \\  --dump <file>         write the population after the last tick
@@ -73,17 +84,19 @@ fn usage() void {
 }
 
 const Options = struct {
+    kernel_path: ?[]const u8 = null,
     capacity: u32 = 4096,
     rng: u32 = 1,
     dt_ms: u64 = 16,
     ticks: u32 = 60,
-    knobs: spindrift.Knobs = .{ .rate = fixed.fromInt(100), .speed = fixed.fromInt(2), .spread = fixed.HALF, .gravity = -fixed.fromInt(10), .life_ns = std.time.ns_per_s },
+    knobs: spindrift.Knobs = .{ .rate = fixed.fromInt(100), .speed = fixed.fromInt(2), .spread = fixed.HALF, .life_ns = std.time.ns_per_s },
+    gravity: Fixed = -(9 * fixed.ONE + 52428), // -9.8
     pos: fixed.Vec = fixed.zero_vec,
     aim: fixed.Vec = .{ 0, fixed.ONE, 0 },
     floor: bool = true,
     name: []const u8 = "em",
     jobs: u32 = 0,
-    chunk: u32 = spindrift.emitter.DEFAULT_CHUNK,
+    chunk: u32 = spindrift.spray.DEFAULT_CHUNK,
     rill_path: ?[]const u8 = null,
     every: u32 = 1,
     dump_path: ?[]const u8 = null,
@@ -107,20 +120,11 @@ fn parseVec(text: []const u8) !fixed.Vec {
 fn knobFromPlane(mock: *rill.MockPlane, buf: []u8, name: []const u8, knob: []const u8) ?Fixed {
     const path = std.fmt.bufPrint(buf, "plane.drift.@{s}.{s}", .{ name, knob }) catch return null;
     const bytes = mock.store.get(path) orelse return null;
-    var r = struple.reader(bytes);
-    const e = (r.next() catch return null) orelse return null;
-    return switch (e) {
-        .int => |i| if (i > 32767 or i < -32768) null else fixed.fromInt(@intCast(i)),
-        .float64 => |f| fromF64(f),
-        .float32 => |f| fromF64(f),
+    const v = rill.row.fromStruple(mock.gpa, bytes) orelse return null;
+    return switch (v) {
+        .scalar => |x| x,
         else => null,
     };
-}
-
-fn fromF64(f: f64) ?Fixed {
-    const scaled = f * @as(f64, @floatFromInt(fixed.ONE));
-    if (!std.math.isFinite(scaled) or scaled > std.math.maxInt(Fixed) or scaled < std.math.minInt(Fixed)) return null;
-    return @intFromFloat(@floor(scaled));
 }
 
 fn logThunk(_: ?*anyopaque, label: []const u8, val: []const u8) void {
@@ -145,6 +149,7 @@ fn fmtValue(encoded: []const u8) []const u8 {
         .float32 => |v| std.fmt.bufPrint(&fmt_buf, "{d:.4}", .{v}) catch "?",
         .boolean => |b| if (b) "true" else "false",
         .string => |s| std.fmt.bufPrint(&fmt_buf, "\"{s}\"", .{s}) catch "?",
+        .map => "{…}",
         else => "…",
     };
 }
@@ -168,8 +173,7 @@ pub fn main() !u8 {
             usage();
             return 0;
         }
-        const has_val = i + 1 < args.len;
-        if (!has_val) {
+        if (i + 1 >= args.len) {
             std.debug.print("'{s}' wants a value\n", .{a});
             return 2;
         }
@@ -181,7 +185,9 @@ pub fn main() !u8 {
                 return 2;
             }
         }.f;
-        if (std.mem.eql(u8, a, "--capacity")) {
+        if (std.mem.eql(u8, a, "--kernel")) {
+            o.kernel_path = v;
+        } else if (std.mem.eql(u8, a, "--capacity")) {
             o.capacity = std.fmt.parseInt(u32, v, 10) catch return bad(a, v, "a count");
             if (o.capacity == 0) return bad(a, v, "a count above zero");
         } else if (std.mem.eql(u8, a, "--rng")) {
@@ -198,7 +204,7 @@ pub fn main() !u8 {
         } else if (std.mem.eql(u8, a, "--spread")) {
             o.knobs.spread = fixed.parseDecimal(v) catch return bad(a, v, "cells per second");
         } else if (std.mem.eql(u8, a, "--gravity")) {
-            o.knobs.gravity = fixed.parseDecimal(v) catch return bad(a, v, "cells per second squared");
+            o.gravity = fixed.parseDecimal(v) catch return bad(a, v, "cells per second squared");
         } else if (std.mem.eql(u8, a, "--life")) {
             const ms = std.fmt.parseInt(u64, v, 10) catch return bad(a, v, "milliseconds");
             o.knobs.life_ns = ms * std.time.ns_per_ms;
@@ -239,7 +245,7 @@ pub fn main() !u8 {
         return 2;
     }
 
-    // -- the plane and the optional rill -------------------------------------
+    // -- the plane, the registry, the optional rill --------------------------
     var mock = rill.MockPlane.init(gpa);
     defer mock.deinit();
     var pk = struple.Packer.init(gpa);
@@ -249,10 +255,21 @@ pub fn main() !u8 {
         try packText(&pk, s.value);
         try mock.put(s.path, pk.bytes());
     }
+    // The gravity knob is seeded like any other, unless a --seed already said.
+    {
+        var buf: [256]u8 = undefined;
+        const gpath = try std.fmt.bufPrint(&buf, "plane.drift.@{s}.gravity", .{o.name});
+        if (mock.store.get(gpath) == null) {
+            pk.reset();
+            try pk.appendF64(fixed.toF64(o.gravity));
+            try mock.put(gpath, pk.bytes());
+        }
+    }
 
     var reg = try rill.Registry.init(gpa);
     defer reg.deinit();
     try rill.registerCore(&reg);
+    try spindrift.words.register(&reg);
 
     var prog: ?rill.Program = null;
     defer if (prog) |*p| p.deinit();
@@ -278,30 +295,51 @@ pub fn main() !u8 {
         });
     }
 
-    // -- the emitter --------------------------------------------------------
+    // -- the spray and its kernel --------------------------------------------
     var floor = spindrift.Floor{};
     var nowhere = spindrift.Nowhere{};
     const world = if (o.floor) floor.asWorld() else nowhere.asWorld();
-    var em = try spindrift.Emitter.init(gpa, o.capacity, o.rng, world);
-    defer em.deinit();
-    em.knobs = o.knobs;
-    em.pos = o.pos;
-    em.aim = o.aim;
-    em.chunk = o.chunk;
+    var spray = try spindrift.Spray.init(gpa, o.capacity, o.rng, world);
+    defer spray.deinit();
+    spray.name = o.name;
+    spray.knobs = o.knobs;
+    spray.pos = o.pos;
+    spray.aim = o.aim;
+    spray.chunk = o.chunk;
+
+    var kernel_source: []const u8 = embers;
+    var kernel_owned: ?[]u8 = null;
+    defer if (kernel_owned) |k| gpa.free(k);
+    var kernel_name: []const u8 = "embers";
+    if (o.kernel_path) |path| {
+        kernel_owned = std.fs.cwd().readFileAlloc(gpa, path, 1 << 20) catch |err| {
+            std.debug.print("cannot read {s}: {s}\n", .{ path, @errorName(err) });
+            return 2;
+        };
+        kernel_source = kernel_owned.?;
+        kernel_name = std.fs.path.stem(path);
+    }
+    {
+        var diag = rill.registry.Detail{};
+        spray.mountKernel(&reg, kernel_name, kernel_source, &diag) catch |err| {
+            std.debug.print("kernel refused ({s}): {s}\n", .{ @errorName(err), diag.text() });
+            return 1;
+        };
+    }
 
     var js: ?*common.jobs.JobSystem = null;
     defer if (js) |s| s.deinit();
     if (o.jobs > 0) js = try common.jobs.JobSystem.init(gpa, o.jobs);
 
     var nb: [32]u8 = undefined;
-    std.debug.print("emitter @{s}: capacity {d}, rng {d}, dt {d}ms, world {s}, jobs {d}\n", .{
-        o.name, o.capacity, o.rng, o.dt_ms, if (o.floor) "floor" else "none", o.jobs,
+    std.debug.print("spray @{s}: kernel '{s}' ({d} nodes), capacity {d}, rng {d}, dt {d}ms, world {s}, jobs {d}\n", .{
+        o.name, kernel_name, spray.kernel.?.prog.nodeCount(), o.capacity, o.rng, o.dt_ms, if (o.floor) "floor" else "none", o.jobs,
     });
-    std.debug.print("  knobs: rate {s}", .{fixed.format(em.knobs.rate, &nb)});
-    std.debug.print(" speed {s}", .{fixed.format(em.knobs.speed, &nb)});
-    std.debug.print(" spread {s}", .{fixed.format(em.knobs.spread, &nb)});
-    std.debug.print(" gravity {s}", .{fixed.format(em.knobs.gravity, &nb)});
-    std.debug.print(" life {d}ms\n", .{em.knobs.life_ns / std.time.ns_per_ms});
+    std.debug.print("  knobs: rate {s}", .{fixed.format(spray.knobs.rate, &nb)});
+    std.debug.print(" speed {s}", .{fixed.format(spray.knobs.speed, &nb)});
+    std.debug.print(" spread {s}", .{fixed.format(spray.knobs.spread, &nb)});
+    std.debug.print(" life {d}ms", .{spray.knobs.life_ns / std.time.ns_per_ms});
+    std.debug.print(" gravity {s}\n", .{fixed.format(o.gravity, &nb)});
 
     var path_buf: [256]u8 = undefined;
     var seen_writes: usize = 0;
@@ -310,30 +348,36 @@ pub fn main() !u8 {
         const now = rill.Now{ .frame = t, .time_ns = @as(u64, t) * o.dt_ms * std.time.ns_per_ms };
         if (rt) |*r| try r.tick(now);
         // The plane wins over the command line, knob by knob, each tick.
-        if (knobFromPlane(&mock, &path_buf, o.name, "rate")) |v| em.knobs.rate = v;
-        if (knobFromPlane(&mock, &path_buf, o.name, "speed")) |v| em.knobs.speed = v;
-        if (knobFromPlane(&mock, &path_buf, o.name, "spread")) |v| em.knobs.spread = v;
-        if (knobFromPlane(&mock, &path_buf, o.name, "gravity")) |v| em.knobs.gravity = v;
-        try em.tick(now, js);
+        if (knobFromPlane(&mock, &path_buf, o.name, "rate")) |v| spray.knobs.rate = v;
+        if (knobFromPlane(&mock, &path_buf, o.name, "speed")) |v| spray.knobs.speed = v;
+        if (knobFromPlane(&mock, &path_buf, o.name, "spread")) |v| spray.knobs.spread = v;
+        try spray.tick(now, js, mock.asPlane());
 
+        // Everything written this tick — the rill's and the spray's — is
+        // fed back to the rill as deltas, which is what the engine's plane
+        // does for a subscriber and what the mock does not.
         for (mock.writes.items[seen_writes..]) |w| {
             std.debug.print("   <- {s} = {s}\n", .{ w.path, fmtValue(w.value) });
+            if (rt) |*r| try r.feed(.{ .path = w.path, .value = w.value });
         }
         seen_writes = mock.writes.items.len;
 
+        if (spray.last.refusals > 0) {
+            std.debug.print("     ! kernel refused {d} row(s): {s}\n", .{ spray.last.refusals, spray.last_refusal.text() });
+        }
         const last = t == o.ticks;
         if ((o.every > 0 and t % o.every == 0) or last) {
             std.debug.print("tick {d:>6}  t={d}ms  live {d:>6}  +{d} -{d}{s}  steps {d}\n", .{
-                t,                                                now.time_ns / std.time.ns_per_ms, em.pop.live, em.last.spawned, em.last.died,
-                if (em.last.throttled > 0) "  THROTTLED" else "", em.last.row_steps,
+                t,                                                   now.time_ns / std.time.ns_per_ms, spray.pop.live, spray.last.spawned, spray.last.died,
+                if (spray.last.throttled > 0) "  THROTTLED" else "", spray.last.row_steps,
             });
         }
     }
 
-    const bytes = try spindrift.dump.write(gpa, &em.pop, em.ticks);
+    const bytes = try spindrift.dump.write(gpa, &spray.pop, spray.ticks);
     defer gpa.free(bytes);
     std.debug.print("population: {d} live of {d}, dump {d} bytes, digest {x:0>16}\n", .{
-        em.pop.live, em.pop.capacity, bytes.len, spindrift.dump.digest(bytes),
+        spray.pop.live, spray.pop.capacity, bytes.len, spindrift.dump.digest(bytes),
     });
     if (o.dump_path) |path| {
         try std.fs.cwd().writeFile(.{ .sub_path = path, .data = bytes });
@@ -372,4 +416,15 @@ test "drift-run: a plane knob overrides the command line, int exact and float fl
     try std.testing.expectEqual(fixed.fromInt(400), knobFromPlane(&mock, &buf, "em", "rate").?);
     try mock.putValue("plane.drift.@em.speed", @as(f64, 2.5));
     try std.testing.expectEqual(@divExact(fixed.fromInt(5), 2), knobFromPlane(&mock, &buf, "em", "speed").?);
+}
+
+test "drift-run: the embedded kernel is the shipped text and parses with the words registered" {
+    var reg = try rill.Registry.init(std.testing.allocator);
+    defer reg.deinit();
+    try rill.registerCore(&reg);
+    try spindrift.words.register(&reg);
+    var diag = rill.Diag{};
+    var prog = try rill.parseKernel(std.testing.allocator, &reg, "embers", embers, &diag);
+    defer prog.deinit();
+    try std.testing.expectEqual(@as(usize, 3), prog.nodeCount());
 }

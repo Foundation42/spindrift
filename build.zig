@@ -20,6 +20,14 @@ pub fn build(b: *std.Build) void {
     mod.addImport("rill", rill_mod);
     mod.addImport("common", common_mod);
     mod.addImport("struple", struple_mod);
+    // The words manual rides into the test build so the parity gate can
+    // @embedFile it: every registered word is named in it, both ways —
+    // rill's precedent, and for rill's reason (a manual nothing executes
+    // drifts until it contradicts a gate you already have).
+    mod.addAnonymousImport("drift-words.md", .{ .root_source_file = b.path("docs/drift-words.md") });
+    // The first kernel, embedded: drift-run mounts it when no --kernel is
+    // given, and the gates mount it so the shipped text is the tested text.
+    mod.addAnonymousImport("embers.rill", .{ .root_source_file = b.path("kernels/embers.rill") });
 
     const lib = b.addLibrary(.{
         .linkage = .static,
@@ -41,6 +49,7 @@ pub fn build(b: *std.Build) void {
     run_mod.addImport("rill", rill_mod);
     run_mod.addImport("struple", struple_mod);
     run_mod.addImport("common", common_mod);
+    run_mod.addAnonymousImport("embers.rill", .{ .root_source_file = b.path("kernels/embers.rill") });
     const runner = b.addExecutable(.{ .name = "drift-run", .root_module = run_mod });
     b.installArtifact(runner);
     const runner_cmd = b.addRunArtifact(runner);

@@ -14,31 +14,43 @@ fields. Plane prefix `drift/`.
 plane.ents.@torch.$alarm | above 0.5 0.3 | kick 50ms 2s | mul 400 | write plane.drift.@sparks.rate
 ```
 
-## Status — P0: population and determinism
+## Status — P1: the spray, and a kernel that is rill text
 
-Built and gated: the fixed-capacity struct-of-arrays population with a
-freelist and stable ids, Q16.16 fixed-point arithmetic with no float in the
-loop, the `World` query interface with a mock floor, the canonical struple
-dump (readable from Python with no spindrift code), an emitter with a
-three-phase tick chunked over `common/jobs.zig`, and `drift-run` to drive
-it on rill's mock plane.
+**A kernel is a rill program whose plane is the row.** You mount a rill; a
+kernel is a rill mounted on a spray rather than on the world:
 
-**G0 — determinism** is green and mutation-bitten: the same script twice is
-the same bytes, a perturbed seed is a different population, and chunking
-over four workers cannot reach the result. Eleven hand mutations, eleven
-bites; the ledger records which gate caught which.
+```rill
+// kernels/embers.rill
+spawn
+gravity plane.drift.@self.gravity
+perish
+```
 
-Not built, on purpose: the kernel is a Zig stand-in for
-`spawn`/`gravity`/`perish` that P1 replaces with rill text via a `row`
-evaluator — see `docs/recon/r-a-row-routing.md` for what that costs and the
-rulings it needs. No rendering, no fields, no collision words yet; each
-has its phase in `docs/spindrift-campaign.md`.
+Row fields are `row.pos`, `row.vel`, `row.age` … (sigil mandatory); the
+spray's knobs are `plane.drift.@self.<knob>`, broadcast to every row;
+writes are `write row.<field> [add]`. Rill owns the row plane — the
+row-legal column, the integer kernels for the exact core set, the row
+runtime (`rill/src/row.zig`, spec §3.16). Spindrift owns the population as
+a row plane, the spray with its four-phase tick over `common/jobs.zig`, the
+three words, the dump, and `drift-run`. Everything in the loop is Q16.16;
+no float enters the sim.
+
+**G0, G1 and G2 are green and mutation-bitten** — determinism of the dump,
+the population on the plane (`plane.drift.@<name>.count`, a second rill
+thresholds it, unmount says zero), and the words as operators through
+rill's own registration gates. Twelve hand mutations in this beat, twelve
+bites, one of them a crash; the ledger records which gate caught which.
+
+No rendering, no fields, no collision words yet; each has its phase in
+`docs/spindrift-campaign.md`. The spray tenant on matryoshka's spine lands
+beside this in matryoshka's own repo.
 
 ## Try it
 
 ```sh
 zig build                                   # library + drift-run
 zig build run -- --rate 400 --speed 3 --spread 1 --gravity -9.8 --life 800 --ticks 60 --dump embers.struple
+zig build run -- --kernel my.rill --rill hud.rill   # your kernel, a rill driving the knobs
 python3 tools/read_dump.py embers.struple   # the struple Python port reads it back
 zig build test                              # the gates
 ```
@@ -51,10 +63,13 @@ tick, and two runs with the same flags print the same digest.
 | path | what |
 |---|---|
 | `src/fixed.zig` | Q16.16 — the sim's one number |
-| `src/population.zig` | SoA rows, freelist, `(id, gen)` handles |
+| `src/population.zig` | SoA rows, freelist, `(id, gen)` handles, the row plane a kernel mounts on |
 | `src/world.zig` | `World` vtable; `Floor` and `Nowhere` (the negative control) |
 | `src/dump.zig` | one canonical struple map per population |
-| `src/emitter.zig` | knobs, the three-phase tick, the P0 stand-in kernel |
+| `src/spray.zig` | knobs, the four-phase tick, kernel mount, what the spray says on the plane |
+| `src/words.zig` | `spawn`, `gravity`, `perish` — row words registered into rill |
+| `kernels/embers.rill` | the first kernel, embedded as `drift-run`'s default |
+| `docs/drift-words.md` | the words manual, parity-gated both ways |
 | `src/run.zig` | `drift-run` |
 | `src/tests.zig` | the gates, each with its named mutation |
 | `tools/row_legal.zig` | walks rill's registry, prints the row-legal operators |

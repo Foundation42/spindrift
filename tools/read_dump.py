@@ -67,7 +67,7 @@ def main(path):
     if live:
         lo = min(m["pos_y"]) / 65536.0
         hi = max(m["pos_y"]) / 65536.0
-        print(f"pos_y in [{lo:.4f}, {hi:.4f}] cells; ages {min(m['age'])}..{max(m['age'])} ticks")
+        print(f"pos_y in [{lo:.4f}, {hi:.4f}] cells; ages {min(m['age'])/1e9:.3f}..{max(m['age'])/1e9:.3f} s")
     print("read_dump: ok")
 
 

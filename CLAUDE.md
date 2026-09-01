@@ -7,7 +7,7 @@ feel reassured. Chris has asked for this in every sibling repo; a suite
 run per edit makes the harness the activity rather than the work.
 
     zig build test -Dtest-filter=perish     # one gate, milliseconds
-    zig build test                          # 27, and quick — before a commit
+    zig build test                          # 40, and quick — before a commit
 
 The whole suite here is cheap (no GPU, no engine), so the calculus is
 gentler than matryoshka's: run it when you have changed code, not after
@@ -54,20 +54,33 @@ a trigger. Loud, never a guess — a refusal lands on the node that refused.
 - **Time is fed, never read.** `tick(now)` carries `{frame, time_ns}`; dt
   is the fed delta; no wall clock anywhere in `src/`. A regression is
   `error.TimeRegression`, never a clamp.
-- **No float in the loop.** Every sim number is Q16.16 (`fixed.zig`). The
-  one boundary where a float may appear is a plane knob arriving through
-  `drift-run`, converted once. Parsing a decimal knob is integer
-  arithmetic. This is what makes G0 byte-identity and keeps G7's
-  bit-identity claim honest.
-- **Three phases, one parallel.** Spawn is serial (freelist pop order),
-  the kernel is chunked over `common/jobs.zig` (row-local by the
-  campaign's fence), perish is serial in ascending id (freelist push
-  order). The chunking gate runs at a scale where breaking this shows.
+- **No float in the loop.** Every sim number is Q16.16 (`fixed.zig`,
+  `rill.row.Val`). The one boundary where a float may appear is a plane
+  value arriving as a broadcast or a knob, converted once per tick.
+  Parsing a decimal knob is integer arithmetic. This is what makes G0
+  byte-identity and keeps G7's bit-identity claim honest. **Seed the
+  gravity knob as a number in cells, never as the raw fixed integer** —
+  the harness did once, the boundary refused it as out of range, and
+  every G0 run was gravity-free while green.
+- **Four phases, one parallel** — see the seam below. The chunking gate
+  runs at a scale where breaking this shows.
 
-## The trap: the kernel is a stand-in
+## The seam: rill owns the row plane
 
-`emitter.zig`'s `spawn`/`gravity`/`perish` are Zig, not rill text. That is
-P0's allowed stand-in (recon R-a §7) and P1 deletes it. Do not grow it a
-fourth word, a curl, a collision, or a per-row anything — each of those
-needs a customer scene and a read-aloud, and the place they land is the
-row evaluator P1 builds over rill's parsed graph, not this file.
+A kernel is a rill program whose plane is the row. The column, the row
+runtime and the integer kernels for the core set live in
+`rill/src/row.zig`; a change to how a row is evaluated is a rill change
+with its own commit there, naming the spindrift beat. What lives here: the
+population as a row plane (`population.zig`), the spray's four-phase tick
+(`spray.zig`), and the words (`words.zig`). A new word needs a customer
+scene and a read-aloud before it needs a kernel, and it registers through
+`words.register` with `row.only` set and an exact integer kernel — the G2
+audit and the manual parity gate refuse anything less.
+
+- **Four phases, one parallel.** Broadcasts, spawn (serial), the sweep
+  (kernel, integrate, age — chunked), reap (serial, ascending). `perish`
+  marks; only the reap kills. A kill inside the sweep is a race that now
+  crashes the chunking gate rather than passing it.
+- **A spray with a mounted kernel must not be moved** — the runtime holds
+  a pointer into it. Heap-allocate or keep it in a stable slot.
+- **Integration is not a word.**

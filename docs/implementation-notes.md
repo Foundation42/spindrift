@@ -1,6 +1,6 @@
 # Implementation notes — the ledger
 
-**Status:** P0 (population and determinism) built, G0 green and
+**Status:** P1 (the spray tenant and the row plane) built, G0–G2 green and
 mutation-bitten. 2026-09-01.
 
 Everything here is a decision made while building
@@ -37,6 +37,12 @@ Inherited from rill's ledger unchanged (`rill/docs/implementation-notes.md`,
 - **Loud, never a guess.** A refusal lands on the node that refused it.
 - **Time is fed, never read.** No wall clock anywhere in the sim.
 - **Docs ride the same commit.**
+- *(beat 0, ratified 2026-09-01)* **A race gate runs at the scale where the
+  race can exist.** A gate that watches for a race at a scale where the
+  race never manifests is watching nothing.
+- *(beat 0, ratified 2026-09-01)* **Row-steps are counted, not presumed.**
+  The budget unit is spent where the work happens; a number nobody
+  counted is a number nobody watched.
 
 ## P0 — population and determinism (2026-09-01, §3.1, §3.6, G0)
 
@@ -184,3 +190,125 @@ kernels (R-a §5).
 `Void` for the null world (reads as a type; `Nowhere` reads as a place).
 `steps` alone for the budget unit (`row_steps`, so the unit is in the
 name).
+
+## P1 — the spray tenant and the row plane (2026-09-01, §3.2, §3.3, §7, G1, G2)
+
+**The six rulings (Christian, beat 0 accepted):** row-legality is a
+COLUMN on `OpDef`, not a `Routing` value; the column carries channels used
+plus an exactness bit, and the bit is EARNED — v1's row-legal set is the
+exact set; a kernel is a rill program whose plane is the row (`row.pos`,
+sigil mandatory, no def body, no section, no new grammar — `def ember {
+… }` withdrawn); the tenant is `spray`; positions are dyadic Q16.16
+cells; beat 0's finding 6 (bit-identity holds for `+ − × ÷`, fails for
+transcendentals without integer kernels) is a fact, recorded verbatim in
+the campaign's §7.3. Every one landed in the campaign doc, marked *ruled*.
+
+**Where things went, and why:**
+
+- **rill owns the row plane** (`rill/src/row.zig`, two commits in rill
+  naming this beat: `cbff4c9`, `ae2f3ee`). The column, the `Val`, the row
+  `Plane` vtable, the `Runtime` (mount + `evalRow`), the 29 exact core
+  kernels, `parseKernel`, and the cycle-check exemption for `row.` writes.
+  Rill's ledger has the seam's own decisions and its seven mutants.
+- **spindrift owns the population as a row plane** (`population.zig`:
+  `asRowPlane`, the schema, `doomed`), **the spray** (`spray.zig`: the
+  four-phase tick — broadcasts, spawn, sweep, reap — and what it says on
+  the plane) and **the words** (`words.zig`: `spawn`, `gravity`,
+  `perish`, each `row.only` with an exact kernel). The P0 stand-in kernel
+  is deleted; `emitter.zig` is gone.
+- **The tick gained a phase.** Broadcasts first: every `plane.…` the
+  kernel reads is fetched once, `@self` resolved to the spray's name,
+  converted once to a row value (the one float boundary), handed to the
+  runtime. Then spawn (serial), the sweep (parallel: kernel, integrate,
+  age), reap (serial, ascending). `perish` MARKS (`doomed`); the reap
+  kills. A kill inside the sweep is the freelist race — and now it is a
+  crash, not a silent wrong answer (mutation P4 below).
+- **Integration is not a word.** A velocity that did not move its
+  position would not be a velocity: the sweep does `pos += vel · dt` after
+  the kernel's writes land, so `gravity` then integrate is semi-implicit
+  Euler and the beat-0 closed form (`-k(k+1)/2`) still holds exactly.
+- **`spawn` launches; the spray births.** The host creates a row (seed,
+  life, position) at `rate`; `spawn` gives it a velocity on its birth tick
+  and never again. A kernel without `spawn` has rows that sit where they
+  were born, which is a thing you can see; a kernel without `perish` has
+  immortal rows and a full population that says `throttled`.
+- **Age and life are nanoseconds now, not ticks** (R-b fork 3, revised).
+  Ticks made a row's age depend on the dt history it lived through, and a
+  variable-dt host breaks that. The row reads them back as Q16.16
+  seconds; `perish` compares nanoseconds. The dump carries ns.
+- **`row.seed` is a per-row uniform in [0, 1)** — the seed's low sixteen
+  bits as the fraction. `row.seed | mul 2` is a decorrelated 0..2.
+- **What the spray says: `count`, `bounds`, `digest`, change-only.** The
+  digest is a cheap hash over live rows (ids, pos, vel, age), not the
+  dump's — building a dump every tick to hash it is a dump every tick.
+  Unmount says `count = 0`; bounds and digest keep their last value (a
+  bound of nothing is not a box).
+- **The harness feeds the spray's writes to the rill as deltas.** The mock
+  plane records writes and notifies nobody; `drift-run` and the G1 gate
+  do what the engine's plane does. The tenant's bridge in matryoshka gets
+  it for free from the real plane.
+- **`drift-run --kernel`**, default the embedded `kernels/embers.rill`
+  (which reads `gravity plane.drift.@self.gravity` — the knob is a
+  broadcast, seeded from `--gravity`). The embedded text is the tested
+  text (the runner's own gate parses it with `parseKernel`).
+- **G2's manual is `docs/drift-words.md`**, embedded and parity-gated both
+  ways like rill's: every registered word has a table row, every table
+  row names a registered word.
+
+**Four findings on the way, each a ledger shape:**
+
+- **`fails_mount` leaked.** A row word's plane-side refusal was declared
+  with `fails_mount`; `plane.x | gravity` mounted cleanly because an unfed
+  `plane.x` means the node never evaluates at tick 0. Found by G2, which
+  asserted the refusal. The parser is the gate now (`parseKernel`), and
+  the spec says why.
+- **G0 passed on a population that never moved.** The row runtime's write
+  queue was sized to `write` nodes, so `gravity` and `spawn` refused
+  every row as "too many writes" and two runs of nothing agreed byte for
+  byte. The negative control caught it (nothing fell below the floor).
+  G0's harness now refuses a run with kernel refusals, a population that
+  never moved, or one that never fell. *Determinism of stillness is not
+  the claim.*
+- **The gravity knob was seeded as a raw fixed integer** (−655360 cells),
+  out of range at the boundary, so every G0 run was gravity-free while
+  green. Same catch, same fix: the harness asserts a row fell.
+- **The mutation harness read a crashed runner as green.** Under P4 the
+  suite panics inside the chunking gate; zig's summary after a crash still
+  prints the tests that had passed, and the parser took that line. A
+  crashed runner is a bite, and the harness says so now.
+
+### P1 mutations — what each gate caught (12/12 bitten)
+
+| # | mutation | bitten by |
+|---|---|---|
+| P1 | `spawn` relaunches every tick | spawn birth-tick gate |
+| P2 | `gravity` replaces instead of adds | gravity; broadcast; spawn |
+| P3 | `perish` on `>` | perish; freelist |
+| P4 | reap inside the parallel sweep | **the chunking gate — a panic**: two workers race `kill`, and `kill` asserts. The loudest honest bite. |
+| P5 | unmount does not say zero | G1 |
+| P6 | `@self` not resolved | broadcast; G0 ×3; negative control (every row gravity-free) |
+| P7 | count said every tick | change-only gate |
+| P8 | `gravity` loses `row.only` | G2 |
+| P9 | a word's row removed from the manual | G2 parity |
+| P10 | broadcasts never fed | broadcast; G0 ×3; negative control |
+| P11 | `spawn` ignores the row seed | spread gate (all rows one draw) |
+| P12 | integration dropped | G0 ×3; gravity; spawn; negative control |
+
+### Recorded, not built
+
+| what | trigger |
+|---|---|
+| a stateful row op (`channels > 0`) — allocation and overflow refusal exist in rill, nothing exercises them past mount | the first per-row envelope (`kick` earning its integer kernel) |
+| `sqrt` and the transcendentals as earned integer kernels | the first kernel that wants a distance or a curve |
+| `spray bind` following an entity | Ironwood's torch (§5) |
+| the World caller | P4's `collide`, after its read-aloud |
+| the row-legal column's `channels` audited against a real op | same as the first row |
+| `drift/<@em>/throttled` as a mailbox occurrence (it is a per-tick stat today) | G6 |
+
+### Rejected names
+
+`emitter` (taken by the sound emitter), `source`, `spring`, `fount`,
+`nozzle` for the tenant — `spray`. `die`/`kill` for `perish`. `launch` for
+`spawn` was considered for one sentence and dropped: `spawn` is the word
+every particle system already says, and the read-aloud found nothing
+wrong with it.
