@@ -1,7 +1,9 @@
 # Implementation notes — the ledger
 
-**Status:** P2 (fields both ways) built, G0–G4 green and mutation-bitten.
-2026-09-01.
+**Status:** P3 (the first picture) in progress, 2026-09-02: the spindrift
+and rill half is built — `over`, the array literal on the row,
+`coarsened` on the plane, dirty chunks for the renderer. The renderer, the
+applet and G5 land in matryoshka and spark.
 
 Everything here is a decision made while building
 [spindrift-campaign.md](spindrift-campaign.md), recorded so the next
@@ -43,6 +45,12 @@ Inherited from rill's ledger unchanged (`rill/docs/implementation-notes.md`,
 - *(beat 0, ratified 2026-09-01)* **Row-steps are counted, not presumed.**
   The budget unit is spent where the work happens; a number nobody
   counted is a number nobody watched.
+- *(beat 2, ratified 2026-09-02)* **A gate over a field must vary on every
+  axis it claims.** A field constant along an axis lets a mutation that
+  breaks that axis survive.
+- *(beat 2, ratified 2026-09-02)* **A survived mutation names a
+  decoration.** The right response to a mutation that survives and is
+  right is to delete the thing it mutated, with the reason at the site.
 
 ## P0 — population and determinism (2026-09-01, §3.1, §3.6, G0)
 
@@ -416,3 +424,59 @@ Rill's one: the `$`-desugar gated both ways and on the plane.
 the ear tenant already listens); `read` (too general, and `write`'s
 mirror would promise a plane read it is not); `dank` as a channel name in
 the docs stayed `$dankness` because the campaign said so.
+
+## P3 — the spindrift and rill half of the first picture (2026-09-02, §3.3, §3.7)
+
+**Rulings that opened the beat (Christian, beat 2 accepted):** the lattice
+cap keeps coarsening and never refuses the tick, `drift/@name/coarsened`
+is a change-only plane value, and coarsening is a function of fed inputs
+so a coarsened run replays byte-identical (campaign §7.15); the beat-2
+report's calls ratified as reported (§7.16); two new ledger practices
+above. P3's order is ruled — rule 7 first — and the renderer, the sprite
+appearance, the upload, G5, the captures and the applet are matryoshka's
+and spark's; this entry is the half that lives here.
+
+- **`over` is the fifth word** (`words.zig`): `row.age | over row.life
+  [1.0, 0.7, 0.0]` — `t = age / life` clamped to [0, 1], piecewise linear
+  over evenly spaced knots, numbers or Oklab vec3s, exact by lerp; a life
+  of zero refuses by name. Read-aloud: `over` reads as the division it is;
+  `across` reads as a span; `curve` names the shape, not the operation.
+- **The first stateless array on the row** is rill's (rill `84c0c9d`):
+  the parser builds `[1, 0.5, 0]` as an `array` node and `[{l: 1, a: 0,
+  b: 0}, …]` as record nodes under it — a live tuple on the plane — and
+  the row runtime FOLDS those at mount into one shared value every row
+  reads, skipping the nodes in the sweep. A live element, an empty array,
+  a nested one, a boolean inside: refused at mount by name. A broadcast
+  never carries an array. Records spell x, y, z or l, a, b.
+- **`coarsened` is said on the plane** beside `count`, `bounds`, `digest`:
+  the largest doubling over the sampled channels' lattices, change-only,
+  zero when the declared cell held. Gated with two channels — a fine one
+  that doubles and a coarse one that holds — because with one channel
+  "the last lattice" and "the worst" were the same lattice and a mutation
+  reporting the last survived. And gated for replay: two coarsened runs,
+  one byte string.
+- **Dirty chunks for the renderer** (`spray.dirtyChunks()`): a chunk is
+  dirty on every tick a live row was swept in it — that is the whole
+  rule. The first draft also marked at spawn and at reap; mutations
+  dropping either survived, because a row born this tick is swept this
+  tick and a row reaped this tick was swept this tick. Two decorations,
+  deleted; the sweep's mark dropped is now the mutation, and it bites.
+
+### P3 mutations, this half (7/7 bitten, two after rewrites)
+
+| # | mutation | bitten by |
+|---|---|---|
+| S1 | `over`: the segment never advances | the over gate (second half of life) |
+| S2 | `over`: t not clamped at life | the over gate (past the last knot) |
+| S3 | `over`: a zero life not refused | the over refusal gate |
+| S4 | `coarsened` said every tick | G1's change-only gate; the coarsened gate |
+| S5 | `coarsened` reports the last lattice, not the worst | **survived with one channel** — A equalled B. Two channels, fine first; bites. |
+| S6 | dirty: the sweep's mark dropped | the dirty-chunk gate (after the spawn and reap marks were found to be decorations and deleted) |
+| S7 | array fold accepts a live element as zero | the over refusal gate (rill-side mutation) |
+
+### Recorded, not built
+
+| what | trigger |
+|---|---|
+| named colours in a curve (`[white, orange, dark]`) | a palette on the plane — the applet's `:::curve` may want one first |
+| `over` with knots at authored x positions (today evenly spaced) | a curve the applet cannot draw evenly |

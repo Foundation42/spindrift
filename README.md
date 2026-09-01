@@ -86,7 +86,7 @@ tick, and two runs with the same flags print the same digest.
 | `src/dump.zig` | one canonical struple map per population |
 | `src/fields.zig` | the `Fields` host interface, the engine's kernel, the mock store and its cast door |
 | `src/spray.zig` | knobs, the six-phase tick, kernel mount, lattices, the aggregate cast, what the spray says |
-| `src/words.zig` | `spawn`, `gravity`, `perish`, `hear` — row words registered into rill |
+| `src/words.zig` | `spawn`, `gravity`, `perish`, `hear`, `over` — row words registered into rill |
 | `kernels/embers.rill`, `kernels/smoke.rill` | the first two kernels; embers is `drift-run`'s default |
 | `docs/drift-words.md` | the words manual, parity-gated both ways |
 | `src/run.zig` | `drift-run` |

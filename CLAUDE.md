@@ -7,7 +7,7 @@ feel reassured. Chris has asked for this in every sibling repo; a suite
 run per edit makes the harness the activity rather than the work.
 
     zig build test -Dtest-filter=perish     # one gate, milliseconds
-    zig build test                          # 55, and quick — before a commit
+    zig build test                          # 59, and quick — before a commit
 
 The whole suite here is cheap (no GPU, no engine), so the calculus is
 gentler than matryoshka's: run it when you have changed code, not after

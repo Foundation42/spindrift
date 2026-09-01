@@ -276,10 +276,14 @@ pub const Spray = struct {
     /// The first refusal's words from the last tick, for the host's log.
     last_refusal: rill.registry.Detail = .{},
     chunk_steps: []u32 = &.{},
-    /// Per chunk: did anything in it change this tick — a row born, swept
-    /// or reaped? The renderer uploads dirty chunks and nothing else
-    /// (campaign §3.7). Set in the phases that touch rows, cleared at the
-    /// top of the tick; a chunk with no live row and no death is quiet.
+    /// Per chunk: was a live row swept in it this tick? That is the whole
+    /// rule — the renderer uploads dirty chunks and nothing else (campaign
+    /// §3.7). A row born this tick is swept this tick; a row reaped this
+    /// tick was swept this tick (`perish` marks during the sweep, the reap
+    /// kills after), so the chunk it leaves is dirty now and quiet next
+    /// tick. The first draft also marked at spawn and at reap; mutations
+    /// dropping either survived every gate, because the sweep's mark had
+    /// already said it — two decorations, deleted (ledger, beat 3).
     chunk_dirty: []bool = &.{},
     kernel: ?Kernel = null,
     /// One per `samples` entry, allocated on the first tick that sees them.
@@ -291,6 +295,7 @@ pub const Spray = struct {
     said_count: ?u32 = null,
     said_digest: ?u64 = null,
     said_bounds: ?[6]Fixed = null,
+    said_coarsened: ?u32 = null,
 
     pub fn init(gpa: std.mem.Allocator, capacity: u32, seed: u32, world: World) !Spray {
         return .{
@@ -381,10 +386,6 @@ pub const Spray = struct {
     /// `tick`; one entry per chunk of `chunk` rows.
     pub fn dirtyChunks(self: *const Spray) []const bool {
         return self.chunk_dirty;
-    }
-
-    fn chunkOf(self: *const Spray, id: u32) usize {
-        return id / self.chunk;
     }
 
     /// The lattice for a sampled channel, for `hear`. Null = not sampled.
@@ -508,7 +509,7 @@ pub const Spray = struct {
             };
             // Fit: cell doubles until every axis has ≤ MAX_SAMPLES points.
             var cell = l.declared_cell;
-            var coarsened: u8 = 0;
+            var doublings: u8 = 0;
             var dims: [3]u32 = undefined;
             while (true) {
                 var fits = true;
@@ -520,14 +521,14 @@ pub const Spray = struct {
                 }
                 if (fits or cell >= std.math.maxInt(Fixed) / 2) break;
                 cell *= 2;
-                coarsened += 1;
+                doublings += 1;
             }
             inline for (0..3) |a| dims[a] = @min(dims[a], MAX_SAMPLES);
             l.cell = cell;
             l.dims = dims;
-            l.coarsened = coarsened;
+            l.coarsened = doublings;
             inline for (0..3) |a| l.origin[a] = lo[a] - cell;
-            if (coarsened > 0) stats.coarsened += 1;
+            if (doublings > 0) stats.coarsened += 1;
 
             // Rasterise.
             var k: u32 = 0;
@@ -569,7 +570,6 @@ pub const Spray = struct {
                 stats.throttled += owed;
                 return;
             };
-            self.chunk_dirty[self.chunkOf(id)] = true;
             const p = &self.pop;
             p.seed[id] = mix(self.seed, self.spawned);
             self.spawned +%= 1;
@@ -689,7 +689,6 @@ pub const Spray = struct {
         while (id < self.pop.capacity) : (id += 1) {
             if (self.pop.alive[id] and self.pop.doomed[id]) {
                 self.pop.kill(id);
-                self.chunk_dirty[self.chunkOf(id)] = true;
                 stats.died += 1;
             }
         }
@@ -787,6 +786,29 @@ pub const Spray = struct {
             try self.write(plane, &path_buf, "bounds", pk.bytes());
             self.said_bounds = now_bounds;
         }
+
+        // `coarsened` (ruled, beat 2 accepted): how many times the declared
+        // cell was doubled to fit the cap, the largest over the sampled
+        // channels; zero when the declared cell held. Change-only, so a
+        // sentry can watch it and not only the Spray applet. A function of
+        // the bounds and the declared cell alone — fed inputs — so a
+        // coarsened run replays byte-identical (gated).
+        const now_coarsened = self.coarsened();
+        if (self.said_coarsened != now_coarsened) {
+            pk.reset();
+            try pk.appendInt(now_coarsened);
+            try self.write(plane, &path_buf, "coarsened", pk.bytes());
+            self.said_coarsened = now_coarsened;
+        }
+    }
+
+    /// The largest doubling any sampled channel's lattice took this tick.
+    pub fn coarsened(self: *const Spray) u32 {
+        var worst: u32 = 0;
+        for (self.lattices) |l| {
+            if (l.live) worst = @max(worst, l.coarsened);
+        }
+        return worst;
     }
 
     /// Absence, said: `count` is zero, the kernel is gone, and the spray's

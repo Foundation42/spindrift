@@ -127,7 +127,7 @@ perish
 
 Integration is not a word: a velocity that did not move its position would not be a velocity. The spray integrates `pos += vel · dt` after the kernel's sweep of a row and ages it; `perish` marks and the spray reaps serially.
 
-Word admission follows the tier-2 discipline: nothing enters on prose; every word has a customer scene in §5; ~30-word budget across the whole campaign. Vocabulary so far: `spawn`, `gravity`, `perish` (beat 1). Proposed for later beats (read-aloud in §9): `drag`, `curl`, `over` (value over life), `collide`, `stick`. `drag`/`curl` are sugar over add/mul/noise and may not survive admission.
+Word admission follows the tier-2 discipline: nothing enters on prose; every word has a customer scene in §5; ~30-word budget across the whole campaign. Vocabulary so far: `spawn`, `gravity`, `perish` (beat 1), `hear` (beat 2), `over` (beat 3 — value over normalised life, piecewise linear over an array literal, exact by lerp; the first stateless array on the row). Proposed for later beats (read-aloud in §9): `drag`, `curl`, `collide`, `stick`. `drag`/`curl` are sugar over add/mul/noise and may not survive admission.
 
 ### 3.4 Fields, both ways
 
@@ -178,7 +178,7 @@ A Spray applet, one file: `intent:`/`about:`/`label:`/`icon:`, sliders bound in 
 
 **P2 — Fields.** Lattice materialisation for sampled channels; aggregate cast; `$wind at row.pos`; G3, G4. Customer: smoke that leans in the wind and makes a room dank. **Beat 2** (`docs/cc-report-beat2.md`).
 
-**P3 — Leaf, appearance, applet.** `LEAF_PARTICLES`, billboard leaf with its coverage function, appearance links, dirty-chunk upload, Spray applet, `:::curve`; G5. First captures on the customer scenes.
+**P3 — Leaf, appearance, applet.** `LEAF_PARTICLES`, billboard leaf with its coverage function, appearance links, dirty-chunk upload, Spray applet, `:::curve`; G5. First captures on the customer scenes. *Ruled order (beat 2 accepted):* rule 7 first — the leaf and the spray bounds as a dynamic-tree object, every frozen ref at AE=0 with no spray mounted, before anything is drawn; sprite appearance only (a camera-facing disc of `row.size`, `row.colour`, alpha as a cutout, not blended; light and metaball only if sprite lands with room); upload per dirty chunk after the sim tick, quantising once to the gauge lattice with integer arithmetic; G5 with the two-hop; the fifth word `over`; the Spray applet with a reusable `:::curve` span and a row-steps sparkline on Perf. **Beat 3** (`docs/cc-report-beat3.md`).
 
 **P4 — Tracer verbs and budget.** `collide`/`ground` on the CPU twin tracer, `stick`, the row-steps budget and priority scheduler, the governor writing the knob; G6.
 
@@ -242,6 +242,8 @@ Deferred fills, each with a trigger:
 12. *(beat 1 accepted)* **Write-verbs rev 3 is ratified, §5 all five**, and the spray is `hold`'s second customer beside `camera/pose/*`: the rig authors the base; a rill modulates with `write … add|mul|stops` as a lane that folds in owner order and retracts on unmount; a rill seizes with `write … hold`; a program's bare `write` on a rig knob is refused at mount naming `hold`; console/applet bare `write` sets the authored value. Each spray knob declares its acceptance mask on `^spray` — `rate` add|mul, `speed` add|mul, `spread` add, `life` mul — refused at mount for a mode not accepted. **Interim** until the verb lands: `rate` and `speed` take the existing modulation lane with `.mul` semantics so the CHOPs example works today; recorded with the write-verbs landing as its trigger. Write-verbs is a campaign with a customer waiting; whether it is briefed after P2 or folds the spray knobs into its first beat is said in the P2 report.
 13. *(beat 1 accepted)* **`spray dump` hands its bytes to a host channel**; the verb does not touch the filesystem. The host decides where bytes land — a file when headless, the bus over the wire.
 14. *(beat 1 accepted)* **Broadcast floors stay as they are.** A knob written as `9.8` reaches every row as 9.7999, the same floor a literal takes at mount. Trigger as recorded: a customer scene that wants round-to-nearest at the boundary.
+15. *(beat 2 accepted)* **The lattice cap: keep coarsening, never refuse the tick.** `drift/@name/coarsened` is a change-only plane value beside `count`, `bounds`, `digest` — zero when the declared cell held — so a sentry can watch it, not only the Spray applet. Coarsening is a function of the bounds and the declared cell only, fed inputs, so replay holds; gated: a coarsened run replays byte-identical.
+16. *(beat 2 accepted, ratified as reported)* the engine's ownership rule wins over G4's "after the decay" sentence; write-verbs is briefed after P2 as its own campaign with the spray knobs as beat 1's customer; the engine-side audience filter is deleted so the rule lives once; `@` after a dot is a path segment; the CHOPs example is respelled `write plane.drift.@sparks.rate add`.
 11. *(beat 0 fork 5, ruled)* **Dyadic Q16.16 cells.** Matryoshka's per-scene BVH quantisation lattice is **not** dyadic in the same units (gauge: `extent / (2²⁰ − 1)`; slim nodes: dyadic per BVH with its own exponent), so position → Morton key is not a shift: the upload quantises once per dirty chunk, deterministically.
 
 ## 8. Ledger practices this campaign is likely to add
@@ -252,6 +254,8 @@ Deferred fills, each with a trigger:
 - the mock `World` is a negative control: a spray that behaves identically with the floor removed has no collision
 - *(beat 0, ratified)* a race gate runs at the scale where the race can exist
 - *(beat 0, ratified)* row-steps are counted, not presumed
+- *(beat 2, ratified)* a gate over a field must vary on every axis it claims
+- *(beat 2, ratified)* a survived mutation names a decoration
 
 ---
 
@@ -261,4 +265,4 @@ Library: **Spindrift** (chosen). Rejected on the way: Motes (too small for the w
 
 Tenant: **spray** (ruled). Rejected on read-aloud: emitter (taken by the sound emitter), source (the Source enum), spring (an unbuilt operator), fount, nozzle.
 
-Words: `spawn`, `gravity`, `perish` (admitted, beat 1); `drag`, `curl`, `over`, `collide`, `stick` (proposed). Rejected: `die`/`kill` for `perish` — `perish` reads as the row's own verb where `kill` reads as someone else's. Held: `bend` for the wind coupling if `$wind at row.pos | add row.vel` reads badly aloud.
+Words: `spawn`, `gravity`, `perish` (admitted, beat 1); `hear` (beat 2); `over` (beat 3 — rejected on read-aloud: `across`, a span not a fraction; `curve`, the shape not the operation); `drag`, `curl`, `collide`, `stick` (proposed). Rejected: `die`/`kill` for `perish` — `perish` reads as the row's own verb where `kill` reads as someone else's. Held: `bend` for the wind coupling if `$wind at row.pos | add row.vel` reads badly aloud.

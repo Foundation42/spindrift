@@ -927,9 +927,10 @@ test "smoke.rill: the shipped kernel parses and mounts on a spray that samples $
     try testing.expectEqual(@as(usize, 6), b.spray.kernel.?.prog.nodeCount());
 }
 
-test "dirty chunks: a chunk is dirty when a row was born, swept or reaped in it, and quiet otherwise" {
-    // Mutation: mark only swept chunks; the tick that reaps the last row of
-    // a chunk leaves it clean and the renderer keeps drawing a ghost.
+test "dirty chunks: a chunk is dirty on every tick a live row was swept in it — born, moving, or dying — and quiet otherwise" {
+    // Mutation: the sweep's mark dropped; nothing is ever dirty and the
+    // renderer never uploads. The tick that reaps a chunk's last row must
+    // be dirty (the ghost) and the next quiet (the upload that never ends).
     const gpa = testing.allocator;
     const b = try Bench.init(gpa, 64, 1);
     defer b.deinit(gpa);
@@ -948,4 +949,93 @@ test "dirty chunks: a chunk is dirty when a row was born, swept or reaped in it,
     try testing.expectEqualSlices(bool, &.{ true, false, false, false }, b.spray.dirtyChunks());
     try b.tick(4, 2 * std.time.ns_per_s); // nothing left: quiet
     try testing.expectEqualSlices(bool, &.{ false, false, false, false }, b.spray.dirtyChunks());
+}
+
+// ---------------------------------------------------------------------------
+// Beat 3 — `over`, and `coarsened` on the plane.
+// ---------------------------------------------------------------------------
+
+test "over: a value over normalised life is piecewise linear over the knots, exact, numbers and Oklab colours alike" {
+    // Mutation: the segment index never advances (always knots[0..1]); the
+    // second half of life reads the first segment.
+    const gpa = testing.allocator;
+    const b = try Bench.init(gpa, 4, 1);
+    defer b.deinit(gpa);
+    b.spray.knobs = .{ .rate = fixed.fromInt(1), .life_ns = 4 * std.time.ns_per_s };
+    try b.mount(
+        \\row.age | over row.life [1, 0.5, 0] | write row.size
+        \\row.age | over row.life [{l: 1, a: 0, b: 0}, {l: 0, a: 0.5, b: -0.5}] | write row.colour
+    );
+    try b.tick(0, 0);
+    try b.tick(1, std.time.ns_per_s); // born: age 0 at the sweep
+    try testing.expectEqual(@as(u32, 0), b.spray.last.refusals);
+    try testing.expectEqual(fixed.ONE, b.spray.pop.size[0]);
+    try testing.expectEqual([3]Fixed{ fixed.ONE, 0, 0 }, .{ b.spray.pop.colour[0][0], b.spray.pop.colour[1][0], b.spray.pop.colour[2][0] });
+    b.spray.knobs.rate = 0;
+    try b.tick(2, 2 * std.time.ns_per_s); // age 1 s of 4: t = 0.25 → first segment, halfway: 0.75
+    try testing.expectEqual(fixed.ONE / 4 * 3, b.spray.pop.size[0]);
+    try b.tick(3, 3 * std.time.ns_per_s); // t = 0.5 → the middle knot exactly
+    try testing.expectEqual(fixed.HALF, b.spray.pop.size[0]);
+    try testing.expectEqual([3]Fixed{ fixed.HALF, fixed.ONE / 4, -fixed.ONE / 4 }, .{ b.spray.pop.colour[0][0], b.spray.pop.colour[1][0], b.spray.pop.colour[2][0] });
+    try b.tick(4, 4 * std.time.ns_per_s); // t = 0.75 → second segment, halfway: 0.25
+    try testing.expectEqual(fixed.ONE / 4, b.spray.pop.size[0]);
+    try b.tick(5, 5 * std.time.ns_per_s); // t = 1 → the last knot; past life it stays there
+    try testing.expectEqual(@as(Fixed, 0), b.spray.pop.size[0]);
+    try b.tick(6, 6 * std.time.ns_per_s);
+    try testing.expectEqual(@as(Fixed, 0), b.spray.pop.size[0]);
+}
+
+test "over: refuses a life of zero by name, and a live element in the curve at mount" {
+    const gpa = testing.allocator;
+    const b = try Bench.init(gpa, 4, 1);
+    defer b.deinit(gpa);
+    var diag = rill.registry.Detail{};
+    try testing.expectError(error.Mount, b.spray.mountKernel(&b.reg, "k", "row.age | over row.life [row.size, 1] | write row.size", &diag));
+    try testing.expect(std.mem.indexOf(u8, diag.text(), "an array on the row is a literal") != null);
+    b.spray.knobs = .{ .rate = fixed.fromInt(1), .life_ns = 0 };
+    try b.mount("row.age | over row.life [1, 0] | write row.size\n");
+    try b.tick(0, 0);
+    try b.tick(1, std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 1), b.spray.last.refusals);
+    try testing.expect(std.mem.indexOf(u8, b.spray.last_refusal.text(), "life is 0") != null);
+}
+
+test "coarsened: said on the plane, change-only, the worst over the sampled channels, zero when the declared cell held, and a coarsened run replays byte-identical" {
+    // Mutation: publish every tick — the change-only assertion fails.
+    // Mutation: publish the LAST lattice's doublings, not the worst — with
+    // the fine channel first and a coarse one that holds second, "last"
+    // says zero. (The first draft had one channel, so last and worst were
+    // the same lattice and the mutation survived: A equalled B.)
+    const gpa = testing.allocator;
+    var dumps: [2][]u8 = undefined;
+    for (&dumps) |*d| {
+        const b = try FieldBench.init(gpa, 256, 5);
+        defer b.deinit(gpa);
+        try b.fields.declare(.{ .name = "$wind", .default_decay_ns = 0 });
+        try b.fields.declare(.{ .name = "$fog", .default_decay_ns = 0 });
+        // A cell of 1/16: thirty-three points cover two cells, and a spray
+        // spreading four cells wide must double the cell — twice. The fog's
+        // cell of 4 holds whatever the spray does.
+        b.spray.samples = &.{ .{ .channel = "$wind", .cell = fixed.ONE / 16 }, .{ .channel = "$fog", .cell = fixed.fromInt(4) } };
+        b.spray.knobs = .{ .rate = fixed.fromInt(16), .speed = fixed.fromInt(2), .spread = fixed.fromInt(2), .life_ns = 4 * std.time.ns_per_s };
+        try b.fields.deposit("caster", "$wind", .{ 0, 0, 0 }, 1, 8, null, "");
+        try b.mount("spawn\n$wind at row.pos | write row.u0\nperish\n");
+        try b.tick(0, 0);
+        try testing.expectEqual(@as(f64, 0), rill.types.asNumber(b.mock.store.get("plane.drift.@em.coarsened").?).?); // nothing spread yet: held
+        var t: u64 = 1;
+        while (t <= 8) : (t += 1) try b.tick(t, t * std.time.ns_per_s / 4);
+        try testing.expect(b.spray.coarsened() >= 2);
+        try testing.expectEqual(@as(u8, 0), b.spray.lattice("$fog").?.coarsened); // the coarse one held…
+        try testing.expect(b.spray.lattice("$wind").?.coarsened >= 2); // …the fine one doubled, and the plane says the worst
+        try testing.expectEqual(@as(f64, @floatFromInt(b.spray.coarsened())), rill.types.asNumber(b.mock.store.get("plane.drift.@em.coarsened").?).?);
+        // Change-only: two quiet ticks at the same coarsening write nothing more.
+        var writes: usize = 0;
+        for (b.mock.writes.items) |w| {
+            if (std.mem.eql(u8, w.path, "plane.drift.@em.coarsened")) writes += 1;
+        }
+        try testing.expect(writes >= 2 and writes <= 4);
+        d.* = try dump.write(gpa, &b.spray.pop, b.spray.ticks);
+    }
+    defer for (dumps) |d| gpa.free(d);
+    try testing.expectEqualSlices(u8, dumps[0], dumps[1]);
 }
