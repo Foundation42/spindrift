@@ -100,12 +100,12 @@ Console verbs, prim-sized: `spray add/move/aim/bind/rate/dump/delete`, plus `spr
 
 ```rill
 // bursts on a trigger, rate as a lane, palette stepping
-plane.ents.@torch.$alarm | above 0.5 0.3 | kick 50ms 2s | mul 400 | write plane.mod.drift.@sparks.rate add
+plane.ents.@torch.$alarm | above 0.5 0.3 | kick 50ms 2s | mul 400 | write plane.drift.@sparks.rate add
 plane.world.gunshot | step [red, orange, white] loop | write plane.drift.@sparks.tint
-every 4s | also { drift burst @sparks 200 }
+every 4s | also { spray burst @sparks 200 }
 ```
 
-(`write` per write-verbs rev 3; `set` if that lands otherwise. `above`, `kick`, `step`, `every`, `also` unchanged.)
+(`write` per write-verbs rev 3, ratified: the mode word rides the verb and the `plane.mod.…` path spelling is retired — a lane is `write <path> … add|mul`, never a second path. `above`, `kick`, `step`, `every`, `also` unchanged. In matryoshka today the interim `.mul` lane on `rate` and `speed` folds exactly this; §7.12.)
 
 **Per-particle.** *Ruled 2026-09-01 (§7.4, §7.5):* **a kernel is a rill program whose plane is the row.** You mount a rill; a kernel is a rill mounted on a spray rather than on the world. The file is a fan-out of independent flows over the row — no def body, no section, no new grammar. The earlier `def ember { … }` spelling is withdrawn.
 
