@@ -226,6 +226,12 @@ pub const Lattice = struct {
     }
 };
 
+const ArrayCast = struct {
+    sub: usize,
+    bytes: []u8,
+    vals: []Val,
+};
+
 /// A mounted kernel: the parsed program, the row runtime over this spray's
 /// population, and one evaluation scratch per chunk (chunk-indexed, so no
 /// thread id is needed and the refusal merge is in one order).
@@ -289,6 +295,12 @@ pub const Spray = struct {
     /// One per `samples` entry, allocated on the first tick that sees them.
     lattices: []Lattice = &.{},
     bag_scratch: std.ArrayListUnmanaged(fields_mod.Deposit) = .empty,
+    /// A broadcast that carries an ARRAY (a curve the Spray applet edits,
+    /// read by `over` as `plane.drift.@self.size_curve`): converted once
+    /// when its bytes change, owned here, handed to the runtime by
+    /// pointer — once per tick per spray at most, never per row. Keyed by
+    /// subscription index; the bytes are kept to notice a change.
+    array_casts: std.ArrayListUnmanaged(ArrayCast) = .empty,
 
     /// What was last said on the plane, so a tick that changes nothing says
     /// nothing (change-only: a sensor precondition, and a quiet log).
@@ -311,6 +323,8 @@ pub const Spray = struct {
         self.pop.deinit();
         self.gpa.free(self.chunk_steps);
         self.gpa.free(self.chunk_dirty);
+        self.dropArrayCasts();
+        self.array_casts.deinit(self.gpa);
         for (self.lattices) |l| self.gpa.free(l.values);
         self.gpa.free(self.lattices);
         self.bag_scratch.deinit(self.gpa);
@@ -376,6 +390,15 @@ pub const Spray = struct {
         k.rt.deinit();
         k.prog.deinit();
         self.kernel = null;
+        self.dropArrayCasts();
+    }
+
+    fn dropArrayCasts(self: *Spray) void {
+        for (self.array_casts.items) |c| {
+            self.gpa.free(c.bytes);
+            self.gpa.free(c.vals);
+        }
+        self.array_casts.clearRetainingCapacity();
     }
 
     pub fn hasKernel(self: *const Spray) bool {
@@ -442,8 +465,32 @@ pub const Spray = struct {
                 k.rt.setBroadcast(i, null);
                 continue;
             };
-            k.rt.setBroadcast(i, rill.row.fromStruple(self.gpa, pk.bytes()));
+            if (rill.row.fromStruple(self.gpa, pk.bytes())) |v| {
+                k.rt.setBroadcast(i, v);
+                continue;
+            }
+            k.rt.setBroadcast(i, try self.arrayBroadcast(i, pk.bytes()));
         }
+    }
+
+    /// An array on a broadcast path: converted when its bytes change and
+    /// held here; the same bytes next tick cost a memcmp. Not an array ⇒
+    /// null, and the kernel's port refuses per row by name.
+    fn arrayBroadcast(self: *Spray, sub: usize, bytes: []const u8) !?Val {
+        for (self.array_casts.items, 0..) |c, ci| {
+            if (c.sub != sub) continue;
+            if (std.mem.eql(u8, c.bytes, bytes)) return .{ .array = c.vals };
+            self.gpa.free(c.bytes);
+            self.gpa.free(c.vals);
+            _ = self.array_casts.swapRemove(ci);
+            break;
+        }
+        const vals = (try rill.row.arrayFromStruple(self.gpa, bytes)) orelse return null;
+        errdefer self.gpa.free(vals);
+        const owned = try self.gpa.dupe(u8, bytes);
+        errdefer self.gpa.free(owned);
+        try self.array_casts.append(self.gpa, .{ .sub = sub, .bytes = owned, .vals = vals });
+        return .{ .array = vals };
     }
 
     /// `plane.drift.@self.rate` → `plane.drift.@<name>.rate`. Elsewhere the

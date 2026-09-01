@@ -455,6 +455,17 @@ and spark's; this entry is the half that lives here.
   "the last lattice" and "the worst" were the same lattice and a mutation
   reporting the last survived. And gated for replay: two coarsened runs,
   one byte string.
+- **A broadcast may carry an array — a reversal, with its customer.** The
+  first draft of the array literal said "a broadcast never carries an
+  array", because a per-tick array from the plane read like a per-tick
+  allocation on the row. The Spray applet's `:::curve` is the customer:
+  the curve it edits must reach `over` live, so `over row.life
+  plane.drift.@self.size_curve` reads a broadcast array. The conversion
+  is the spray's, once when the bytes change (cached by bytes per
+  subscription), owned by the spray, handed to the runtime by pointer —
+  once per tick per spray at most, never per row, so the row's arrays
+  stay stateless. A number where a curve should be refuses per row by
+  name. rill `f90873c`.
 - **Dirty chunks for the renderer** (`spray.dirtyChunks()`): a chunk is
   dirty on every tick a live row was swept in it — that is the whole
   rule. The first draft also marked at spawn and at reap; mutations
@@ -462,7 +473,7 @@ and spark's; this entry is the half that lives here.
   tick and a row reaped this tick was swept this tick. Two decorations,
   deleted; the sweep's mark dropped is now the mutation, and it bites.
 
-### P3 mutations, this half (7/7 bitten, two after rewrites)
+### P3 mutations, this half (8/8 bitten, two after rewrites)
 
 | # | mutation | bitten by |
 |---|---|---|
@@ -473,6 +484,7 @@ and spark's; this entry is the half that lives here.
 | S5 | `coarsened` reports the last lattice, not the worst | **survived with one channel** — A equalled B. Two channels, fine first; bites. |
 | S6 | dirty: the sweep's mark dropped | the dirty-chunk gate (after the spawn and reap marks were found to be decorations and deleted) |
 | S7 | array fold accepts a live element as zero | the over refusal gate (rill-side mutation) |
+| S8 | the array broadcast is not re-converted when its bytes change | the broadcast-curve gate (the second curve never seen) |
 
 ### Recorded, not built
 

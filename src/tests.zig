@@ -1039,3 +1039,32 @@ test "coarsened: said on the plane, change-only, the worst over the sampled chan
     defer for (dumps) |d| gpa.free(d);
     try testing.expectEqualSlices(u8, dumps[0], dumps[1]);
 }
+
+test "over: the curve may be a broadcast the applet edits — converted once per change, followed next tick, a scalar refused by name" {
+    // Mutation: the array cast is not re-converted when the bytes change;
+    // the second curve is never seen.
+    const gpa = testing.allocator;
+    const b = try Bench.init(gpa, 4, 1);
+    defer b.deinit(gpa);
+    b.spray.knobs = .{ .rate = fixed.fromInt(1), .life_ns = 2 * std.time.ns_per_s };
+    try b.mock.putValue("plane.drift.@em.size_curve", [_]f64{ 1, 0 });
+    try b.mount("row.age | over row.life plane.drift.@self.size_curve | write row.size\n");
+    try b.tick(0, 0);
+    try b.tick(1, std.time.ns_per_s); // born, t = 0
+    b.spray.knobs.rate = 0;
+    try b.tick(2, 2 * std.time.ns_per_s); // t = 0.5 on [1, 0] → 0.5
+    try testing.expectEqual(@as(u32, 0), b.spray.last.refusals);
+    try testing.expectEqual(fixed.HALF, b.spray.pop.size[0]);
+    try testing.expectEqual(@as(usize, 1), b.spray.array_casts.items.len);
+    // The applet drags the curve: [1, 0] → [1, 1] — halfway is now 1.
+    try b.mock.putValue("plane.drift.@em.size_curve", [_]f64{ 1, 1 });
+    b.spray.pop.age_ns[0] = std.time.ns_per_s; // hold t at 0.5 for the read
+    try b.tick(3, 3 * std.time.ns_per_s);
+    try testing.expectEqual(fixed.ONE, b.spray.pop.size[0]);
+    try testing.expectEqual(@as(usize, 1), b.spray.array_casts.items.len); // replaced, not accumulated
+    // A number where a curve should be: the row refuses, by name.
+    try b.mock.putValue("plane.drift.@em.size_curve", @as(f64, 3));
+    try b.tick(4, 4 * std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 1), b.spray.last.refusals);
+    try testing.expect(std.mem.indexOf(u8, b.spray.last_refusal.text(), "wants an array, got a number") != null);
+}

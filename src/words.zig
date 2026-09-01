@@ -95,8 +95,10 @@ fn kHear(ctx: *row.Ctx) row.Error!void {
 /// clamped to [0, 1], then piecewise linear over the curve's knots, evenly
 /// spaced. Numbers or vec3s (a colour curve in Oklab lerps the same way).
 /// Exact by lerp. The curve is the first stateless array on the row — a
-/// literal, converted once at mount and shared. A life of zero refuses:
-/// "over nothing" is a question, not a value.
+/// literal converted once at mount, or a broadcast (`plane.drift.@self.
+/// size_curve`, the Spray applet's `:::curve`) converted once per change
+/// and shared. A life of zero refuses: "over nothing" is a question, not
+/// a value.
 fn kOver(ctx: *row.Ctx) row.Error!void {
     const age = try ctx.scalar(0);
     const life = try ctx.scalar(1);
@@ -156,7 +158,7 @@ pub const WORDS = [_]rill.OpDef{
             .{ .name = "curve", .ty = Tag.array },
         },
         .outputs = &.{.{ .name = "out", .ty = Tag.any }},
-        .help = "Row word: a value over normalised life — `row.age | over row.life [1.0, 0.7, 0.0]` is 1.0 at birth, 0.7 halfway, 0.0 at the end, piecewise linear over evenly spaced knots. Numbers, or Oklab colours `[{l, a, b}, …]`.",
+        .help = "Row word: a value over normalised life — `row.age | over row.life [1.0, 0.7, 0.0]` is 1.0 at birth, 0.7 halfway, 0.0 at the end, piecewise linear over evenly spaced knots. Numbers, or Oklab colours `[{l, a, b}, …]`; the curve may be a literal or a broadcast (`plane.drift.@self.size_curve`).",
         .class = .reads,
         .routes = .anywhere,
         .row = rowOnly(kOver),
