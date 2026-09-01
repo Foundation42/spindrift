@@ -276,6 +276,11 @@ pub const Spray = struct {
     /// The first refusal's words from the last tick, for the host's log.
     last_refusal: rill.registry.Detail = .{},
     chunk_steps: []u32 = &.{},
+    /// Per chunk: did anything in it change this tick — a row born, swept
+    /// or reaped? The renderer uploads dirty chunks and nothing else
+    /// (campaign §3.7). Set in the phases that touch rows, cleared at the
+    /// top of the tick; a chunk with no live row and no death is quiet.
+    chunk_dirty: []bool = &.{},
     kernel: ?Kernel = null,
     /// One per `samples` entry, allocated on the first tick that sees them.
     lattices: []Lattice = &.{},
@@ -300,6 +305,7 @@ pub const Spray = struct {
         self.unmountKernel();
         self.pop.deinit();
         self.gpa.free(self.chunk_steps);
+        self.gpa.free(self.chunk_dirty);
         for (self.lattices) |l| self.gpa.free(l.values);
         self.gpa.free(self.lattices);
         self.bag_scratch.deinit(self.gpa);
@@ -371,6 +377,16 @@ pub const Spray = struct {
         return self.kernel != null;
     }
 
+    /// Which chunks changed this tick, for a renderer's upload. Valid after
+    /// `tick`; one entry per chunk of `chunk` rows.
+    pub fn dirtyChunks(self: *const Spray) []const bool {
+        return self.chunk_dirty;
+    }
+
+    fn chunkOf(self: *const Spray, id: u32) usize {
+        return id / self.chunk;
+    }
+
     /// The lattice for a sampled channel, for `hear`. Null = not sampled.
     pub fn lattice(self: *const Spray, channel: []const u8) ?*const Lattice {
         for (self.lattices) |*l| {
@@ -396,6 +412,8 @@ pub const Spray = struct {
         const dt = fixed.fromNs(dt_ns);
 
         var stats = Stats{};
+        try self.sizeChunks();
+        @memset(self.chunk_dirty, false);
         try self.broadcastPhase(plane);
         try self.materialisePhase(&stats);
         self.spawnPhase(dt_ns, &stats);
@@ -551,6 +569,7 @@ pub const Spray = struct {
                 stats.throttled += owed;
                 return;
             };
+            self.chunk_dirty[self.chunkOf(id)] = true;
             const p = &self.pop;
             p.seed[id] = mix(self.seed, self.spawned);
             self.spawned +%= 1;
@@ -566,12 +585,22 @@ pub const Spray = struct {
 
     const SweepCtx = struct { spray: *Spray, dt: Fixed, dt_ns: u64 };
 
-    fn sweepPhase(self: *Spray, dt: Fixed, dt_ns: u64, js: ?*jobs.JobSystem, stats: *Stats) !void {
+    /// The per-chunk arrays follow `chunk`, which a host may set after init.
+    fn sizeChunks(self: *Spray) !void {
         const n_chunks: usize = (self.pop.capacity + self.chunk - 1) / self.chunk;
         if (self.chunk_steps.len != n_chunks) {
             self.gpa.free(self.chunk_steps);
             self.chunk_steps = try self.gpa.alloc(u32, n_chunks);
         }
+        if (self.chunk_dirty.len != n_chunks) {
+            self.gpa.free(self.chunk_dirty);
+            self.chunk_dirty = try self.gpa.alloc(bool, n_chunks);
+            @memset(self.chunk_dirty, false);
+        }
+    }
+
+    fn sweepPhase(self: *Spray, dt: Fixed, dt_ns: u64, js: ?*jobs.JobSystem, stats: *Stats) !void {
+        const n_chunks: usize = self.chunk_steps.len;
         @memset(self.chunk_steps, 0);
         if (self.kernel) |*k| {
             if (k.scratches.len != n_chunks) {
@@ -608,7 +637,10 @@ pub const Spray = struct {
         }
 
         var steps: u32 = 0;
-        for (self.chunk_steps) |c| steps += c;
+        for (self.chunk_steps, self.chunk_dirty) |c, *d| {
+            steps += c;
+            if (c > 0) d.* = true;
+        }
         stats.row_steps = steps;
         // Merge refusals in chunk order — exact, no atomics, one order.
         if (self.kernel) |*k| {
@@ -657,6 +689,7 @@ pub const Spray = struct {
         while (id < self.pop.capacity) : (id += 1) {
             if (self.pop.alive[id] and self.pop.doomed[id]) {
                 self.pop.kill(id);
+                self.chunk_dirty[self.chunkOf(id)] = true;
                 stats.died += 1;
             }
         }

@@ -926,3 +926,26 @@ test "smoke.rill: the shipped kernel parses and mounts on a spray that samples $
     try b.mount(smoke);
     try testing.expectEqual(@as(usize, 6), b.spray.kernel.?.prog.nodeCount());
 }
+
+test "dirty chunks: a chunk is dirty when a row was born, swept or reaped in it, and quiet otherwise" {
+    // Mutation: mark only swept chunks; the tick that reaps the last row of
+    // a chunk leaves it clean and the renderer keeps drawing a ghost.
+    const gpa = testing.allocator;
+    const b = try Bench.init(gpa, 64, 1);
+    defer b.deinit(gpa);
+    b.spray.chunk = 16; // four chunks
+    b.spray.knobs = .{ .rate = fixed.fromInt(2), .life_ns = std.time.ns_per_s };
+    try b.mount("perish\n");
+    try b.tick(0, 0);
+    try testing.expectEqualSlices(bool, &.{ false, false, false, false }, b.spray.dirtyChunks());
+    try b.tick(1, std.time.ns_per_s / 2); // row 0 born in chunk 0
+    try testing.expectEqualSlices(bool, &.{ true, false, false, false }, b.spray.dirtyChunks());
+    b.spray.knobs.rate = 0;
+    try b.tick(2, std.time.ns_per_s); // swept
+    try testing.expectEqualSlices(bool, &.{ true, false, false, false }, b.spray.dirtyChunks());
+    try b.tick(3, 3 * std.time.ns_per_s / 2); // reaped at age 1 s — swept then killed: still dirty
+    try testing.expectEqual(@as(u32, 1), b.spray.last.died);
+    try testing.expectEqualSlices(bool, &.{ true, false, false, false }, b.spray.dirtyChunks());
+    try b.tick(4, 2 * std.time.ns_per_s); // nothing left: quiet
+    try testing.expectEqualSlices(bool, &.{ false, false, false, false }, b.spray.dirtyChunks());
+}
