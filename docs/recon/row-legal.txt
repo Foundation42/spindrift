@@ -1,0 +1,118 @@
+rill core registry: 108 operators
+
+== row-legal now (pure, elementwise) ==
+  select         class=pure   ticks=no    in=[cond:boolean a:any b:any]  — pure, elementwise by declaration
+  lerp           class=pure   ticks=no    in=[t:number a:number b:number]  — pure, elementwise by declaration
+  and            class=pure   ticks=no    in=[a:boolean* b:boolean*]  — pure, elementwise by declaration
+  or             class=pure   ticks=no    in=[a:boolean* b:boolean*]  — pure, elementwise by declaration
+  not            class=pure   ticks=no    in=[a:boolean*]  — pure, elementwise by declaration
+  wave           class=pure   ticks=no    in=[t:number shape:string period:duration]  — pure, elementwise by declaration
+  range          class=pure   ticks=no    in=[t:number lo:number hi:number]  — pure, elementwise by declaration
+  shape          class=pure   ticks=no    in=[t:number curve:string]  — pure, elementwise by declaration
+  add            class=pure   ticks=no    in=[a:number* b:number*]  — pure, elementwise by declaration
+  sub            class=pure   ticks=no    in=[a:number* b:number*]  — pure, elementwise by declaration
+  mul            class=pure   ticks=no    in=[a:number* b:number*]  — pure, elementwise by declaration
+  div            class=pure   ticks=no    in=[a:number* b:number*]  — pure, elementwise by declaration
+  min            class=pure   ticks=no    in=[a:number* b:number*]  — pure, elementwise by declaration
+  max            class=pure   ticks=no    in=[a:number* b:number*]  — pure, elementwise by declaration
+  clamp          class=pure   ticks=no    in=[in:number lo:number hi:number]  — pure, elementwise by declaration
+  abs            class=pure   ticks=no    in=[in:number*]  — pure, elementwise by declaration
+  floor          class=pure   ticks=no    in=[in:number*]  — pure, elementwise by declaration
+  round          class=pure   ticks=no    in=[in:number*]  — pure, elementwise by declaration
+  sin            class=pure   ticks=no    in=[in:number*]  — pure, elementwise by declaration
+  cos            class=pure   ticks=no    in=[in:number*]  — pure, elementwise by declaration
+  tan            class=pure   ticks=no    in=[in:number*]  — pure, elementwise by declaration
+  sqrt           class=pure   ticks=no    in=[in:number*]  — pure, elementwise by declaration
+  exp            class=pure   ticks=no    in=[in:number*]  — pure, elementwise by declaration
+  log            class=pure   ticks=no    in=[in:number*]  — pure, elementwise by declaration
+  ceil           class=pure   ticks=no    in=[in:number*]  — pure, elementwise by declaration
+  sign           class=pure   ticks=no    in=[in:number*]  — pure, elementwise by declaration
+  fract          class=pure   ticks=no    in=[in:number*]  — pure, elementwise by declaration
+  pow            class=pure   ticks=no    in=[a:number* b:number*]  — pure, elementwise by declaration
+  mod            class=pure   ticks=no    in=[a:number* b:number*]  — pure, elementwise by declaration
+  atan2          class=pure   ticks=no    in=[y:number x:number]  — pure, elementwise by declaration
+  =              class=pure   ticks=no    in=[a:any b:any]  — pure, elementwise by declaration
+  !=             class=pure   ticks=no    in=[a:any b:any]  — pure, elementwise by declaration
+  <              class=pure   ticks=no    in=[a:number* b:number*]  — pure, elementwise by declaration
+  <=             class=pure   ticks=no    in=[a:number* b:number*]  — pure, elementwise by declaration
+  >              class=pure   ticks=no    in=[a:number* b:number*]  — pure, elementwise by declaration
+  >=             class=pure   ticks=no    in=[a:number* b:number*]  — pure, elementwise by declaration
+  choose         class=pure   ticks=no    in=[i:number of:array]  — pure, elementwise by declaration
+  distance       class=pure   ticks=no    in=[a:record b:record]  — pure, elementwise by declaration
+  dot            class=pure   ticks=no    in=[a:record b:record]  — pure, elementwise by declaration
+  within         class=pure   ticks=no    in=[a:record b:record r:number]  — pure, elementwise by declaration
+  angle          class=pure   ticks=no    in=[a:record b:record]  — pure, elementwise by declaration
+  inside         class=pure   ticks=no    in=[p:record min:record max:record]  — pure, elementwise by declaration
+  cross          class=pure   ticks=no    in=[a:record b:record]  — pure, elementwise by declaration
+  transpose      class=pure   ticks=no    in=[in:any]  — pure, elementwise by declaration
+  nearest        class=pure   ticks=no    in=[p:record knots:array] statics=[loop:word]  — pure, elementwise by declaration
+  along          class=pure   ticks=no    in=[t:number knots:array] statics=[loop:word]  — pure, elementwise by declaration
+  match          class=pure   ticks=no    in=[in:any] statics=[shape:shape]  — pure, elementwise by declaration
+  project        class=pure   ticks=no    in=[in:record] statics=[field:word]  — pure, elementwise by declaration
+  merge          class=pure   ticks=no    in=[a:record b:record]  — pure, elementwise by declaration
+
+== elementwise, carries state — legal iff the state fits 4 user channels (registry cannot say; see recon) ==
+  where          class=reads  ticks=no    in=[in:any pred:boolean]  — reads: carries state the registry cannot size (or fed time)
+  partition      class=reads  ticks=no    in=[in:any pred:boolean]  — reads: carries state the registry cannot size (or fed time)
+  changed        class=reads  ticks=no    in=[in:any]  — reads: carries state the registry cannot size (or fed time)
+  latch          class=reads  ticks=no    in=[in:any trigger:any]  — reads: carries state the registry cannot size (or fed time)
+  dropped_below  class=reads  ticks=no    in=[in:number threshold:number]  — reads: carries state the registry cannot size (or fed time)
+  rose_above     class=reads  ticks=no    in=[in:number threshold:number]  — reads: carries state the registry cannot size (or fed time)
+  edge           class=reads  ticks=no    in=[in:boolean]  — reads: carries state the registry cannot size (or fed time)
+  sample         class=reads  ticks=no    in=[in:any period:duration]  — reads: carries state the registry cannot size (or fed time)
+  debounce       class=reads  ticks=no    in=[in:any quiet:duration]  — reads: carries state the registry cannot size (or fed time)
+  throttle       class=reads  ticks=no    in=[in:any window:duration]  — reads: carries state the registry cannot size (or fed time)
+  cooldown       class=reads  ticks=no    in=[in:any window:duration]  — reads: carries state the registry cannot size (or fed time)
+  window         class=reads  ticks=no    in=[in:any span:duration]  — reads: carries state the registry cannot size (or fed time)
+  delay          class=reads  ticks=no    in=[in:any by:duration]  — reads: carries state the registry cannot size (or fed time)
+  every          class=reads  ticks=no    in=[period:duration]  — reads: carries state the registry cannot size (or fed time)
+  arm            class=reads  ticks=no    in=[in:any? off:any(kw)? on:any(kw)?]  — reads: carries state the registry cannot size (or fed time)
+  disarm         class=reads  ticks=no    in=[in:any? off:any(kw)? on:any(kw)?]  — reads: carries state the registry cannot size (or fed time)
+  lfo            class=reads  ticks=yes   in=[shape:string period:duration phase:number(kw)?]  — reads: carries state the registry cannot size (or fed time)
+  ease           class=reads  ticks=yes   in=[in:number tau:duration up:duration(kw)? down:duration(kw)?]  — reads: carries state the registry cannot size (or fed time)
+  ramp           class=reads  ticks=yes   in=[in:number over:duration from:number(kw)?]  — reads: carries state the registry cannot size (or fed time)
+  hold           class=reads  ticks=no    in=[in:number for:duration]  — reads: carries state the registry cannot size (or fed time)
+  diff           class=reads  ticks=yes   in=[in:number]  — reads: carries state the registry cannot size (or fed time)
+  integrate      class=reads  ticks=yes   in=[in:number max:number(kw)]  — reads: carries state the registry cannot size (or fed time)
+  noise          class=reads  ticks=yes   in=[period:duration octaves:number(kw)? seed:number(kw)?]  — reads: carries state the registry cannot size (or fed time)
+  rand           class=reads  ticks=no    in=[in:any seed:number(kw)?]  — reads: carries state the registry cannot size (or fed time)
+  pulse          class=reads  ticks=yes   in=[period:duration width:duration(kw)?]  — reads: carries state the registry cannot size (or fed time)
+  once           class=reads  ticks=no    in=[in:any]  — reads: carries state the registry cannot size (or fed time)
+  toggle         class=reads  ticks=no    in=[in:any]  — reads: carries state the registry cannot size (or fed time)
+  tally          class=reads  ticks=no    in=[in:any]  — reads: carries state the registry cannot size (or fed time)
+  kick           class=reads  ticks=yes   in=[in:any attack:duration decay:duration]  — reads: carries state the registry cannot size (or fed time)
+  adsr           class=reads  ticks=yes   in=[in:boolean attack:duration decay:duration sustain:number release:duration]  — reads: carries state the registry cannot size (or fed time)
+  above          class=reads  ticks=no    in=[in:number on:number off:number]  — reads: carries state the registry cannot size (or fed time)
+  below          class=reads  ticks=no    in=[in:number on:number off:number]  — reads: carries state the registry cannot size (or fed time)
+  step           class=reads  ticks=no    in=[in:any of:array seed:number(kw)? max:number(kw)?] statics=[loop:word bounce:word reverse:word random:word shuffle:word]  — reads: carries state the registry cannot size (or fed time)
+  tap            class=reads  ticks=no    in=[in:any] statics=[label:word]  — reads: carries state the registry cannot size (or fed time)
+
+== not row-legal by the declared fields ==
+  stats          class=pure   ticks=no    in=[in:array]  — port 0 'in' is an array — a row field never is
+  clock          class=reads  ticks=yes   in=[]  — no input: a source, not an elementwise op
+  frame          class=reads  ticks=yes   in=[]  — no input: a source, not an elementwise op
+  pi             class=pure   ticks=no    in=[]  — no input: a source, not an elementwise op
+  tau            class=pure   ticks=no    in=[]  — no input: a source, not an elementwise op
+  array          class=pure   ticks=no    in=[]  — variadic: ports come from the call site
+  nth            class=pure   ticks=no    in=[in:array i:number]  — port 0 'in' is an array — a row field never is
+  map            class=reads  ticks=no    in=[in:array]  — drives a section body per element
+  keep           class=reads  ticks=no    in=[in:array]  — drives a section body per element
+  reduce         class=reads  ticks=no    in=[in:array init:any(kw)?]  — drives a section body per element
+  sort           class=reads  ticks=no    in=[in:array] statics=[desc:word]  — drives a section body per element
+  first          class=pure   ticks=no    in=[in:array]  — port 0 'in' is an array — a row field never is
+  last           class=pure   ticks=no    in=[in:array]  — port 0 'in' is an array — a row field never is
+  len            class=pure   ticks=no    in=[in:array]  — port 0 'in' is an array — a row field never is
+  take           class=pure   ticks=no    in=[in:array n:number from:number(kw)?]  — port 0 'in' is an array — a row field never is
+  shuffle        class=pure   ticks=no    in=[in:array seed:number(kw)?]  — port 0 'in' is an array — a row field never is
+  expect         class=reads  ticks=no    in=[in:any?] statics=[shape:shape]  — asserts at mount, once
+  record         class=pure   ticks=no    in=[]  — variadic: ports come from the call site
+  write          class=effect ticks=no    in=[in:any value:any?] statics=[path:path hold:word add:word mul:word stops:word clear:word]  — effect: writes the plane
+  notify         class=effect ticks=no    in=[in:any value:any?] statics=[path:path]  — effect: writes the plane
+  inc            class=effect ticks=no    in=[in:any by:number] statics=[path:path]  — effect: writes the plane
+  cast           class=effect ticks=no    in=[in:any value:any? at:any(kw) decay:duration(kw)?] statics=[channel:channel radius:literal to:condition]  — effect: writes the plane
+  tag            class=effect ticks=no    in=[in:any] statics=[subject:subject tag:condition]  — effect: writes the plane
+  untag          class=effect ticks=no    in=[in:any] statics=[subject:subject tag:condition]  — effect: writes the plane
+  const          class=pure   ticks=no    in=[] statics=[value:literal]  — no input: a source, not an elementwise op
+
+totals: pure row-legal 49, stateful candidates 34, refused 25
+(* = broadcasts; (kw) = keyword-introduced; ? = optional)

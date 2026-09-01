@@ -1,0 +1,46 @@
+spindrift — dual-licensed
+==========================
+
+spindrift is available under either of:
+
+  - the Apache License, Version 2.0 (see LICENSE-APACHE), OR
+  - a commercial license offered by Foundation42 / Entrained.ai
+    (see LICENSE-COMMERCIAL.md and contact chris@foundation42.org).
+
+You may pick whichever fits your use case. Open-source users, students,
+researchers, and most downstream projects should use Apache 2.0 — it
+imposes no copyleft and grants explicit patent rights.
+
+The commercial license is for organizations that want:
+
+  - a path free of Apache 2.0's attribution / NOTICE-file requirements,
+  - indemnification, support, or a contractual SLA,
+  - use without distributing the corresponding NOTICE.
+
+Both licenses cover the same code. There is no "open core" / "premium
+features" split — the entire spindrift library (population format,
+scheduler, kernel operators, the World interface, dumps, and tooling) is
+available under either license at the licensee's choice.
+
+Contact
+-------
+
+Christian Beaumont — chris@foundation42.org
+Foundation42 — https://foundation42.org
+Entrained.ai  — https://entrained.ai
+
+Third-party
+-----------
+
+The ideas spindrift builds on are prior art: particle systems,
+structure-of-arrays simulation, and fixed-point integer physics are
+well-published territory. The design and the Zig implementation in this
+repo are original. spindrift depends on the sibling rill, common and
+struple libraries, each of which carries its own (identical, dual)
+license in its own repository.
+
+The Apache 2.0 license file applies to all source code and
+documentation in this repository (`src/`, `tools/`, `docs/`,
+`build.zig`, `build.zig.zon`, `README.md`). It does not extend to
+kernels, scenes or populations that hosts feed through a mounted
+spindrift at runtime — those belong to their authors.

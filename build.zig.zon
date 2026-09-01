@@ -1,0 +1,30 @@
+.{
+    .name = .spindrift,
+    .version = "0.0.0",
+    .fingerprint = 0x21ea2d038db50f1d, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.14.1",
+    .dependencies = .{
+        // The language the kernels are written in. Spindrift borrows rill's
+        // registry, parser and plane interface; it never owns a plane.
+        .rill = .{ .path = "../rill" },
+        // The one JobSystem. Never a second copy: identical source in two
+        // modules is two Zig types, and the host must be able to hand its
+        // pool to this library (see common/README.md).
+        .common = .{ .path = "../common" },
+        // The wire format — population dumps are struple so the Python port
+        // reads them for free, and a gate can byte-compare two.
+        .struple = .{ .path = "../struple" },
+    },
+    .paths = .{
+        "LICENSE",
+        "LICENSE-APACHE",
+        "LICENSE-COMMERCIAL.md",
+        "NOTICE",
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "tools",
+        "docs",
+        "README.md",
+    },
+}
