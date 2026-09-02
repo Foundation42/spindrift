@@ -54,6 +54,8 @@ Inherited from rill's ledger unchanged (`rill/docs/implementation-notes.md`,
   the code can be asked; ask it before writing it down (matryoshka
   `c609f0f`: the slash spelling the comment said was refused, the gate
   found accepted).
+- *(beat 4 accepted)* **Byte-identical replay is dumps AND transcript.** A gate that compares only the population can miss a clock that leaked into a number the sim publishes; compare what the sim SAID, first.
+- *(beat 4 accepted)* **A landing gate on one surface watches the arithmetic's luck — gate on two.** 1.65 sat 0.4 ulp above its Q16.16 floor, so a wrong hit point landed on the right bits; the box top caught it.
 - *(beat 3, the applet's first outing)* **A panel whose subject is absent
   must say so on the panel** — and the word it says it with is read
   aloud on screen, beside its neighbours: `lit` beside `count 293` read
@@ -690,3 +692,42 @@ ms of traversal (sub-chunk leaves, trigger met); and the rank-swap seam
 plus the two-ray shadow budget put the fourth coal's light through the
 plate (ruling asked). Also: `row.size` is the disc's RADIUS — two kernel
 comments said "across"; respelled in matryoshka after review.
+
+## P5 — the keep, opened (2026-09-02, rulings 20–27)
+
+**Rulings that closed beat 4 (Christian):** segment versus move is (A),
+kept and said, with (B) and (C′) recorded and (C) refused (§7.20); every
+population-moving verb rides the transcript (§7.21); the engine's three
+defaults (§7.22); material as an opaque host handle (§7.23); the resting
+offset, re-ruled on Christian's screenshots of half-sunk discs (§7.24);
+stochastic coverage as P3c, the threshold knob not built (§7.25); the
+light gain (§7.26); ratified-as-reported and two practices (§7.27).
+
+- **The resting offset — `stick <at> <normal>`** (`words.zig`): the row
+  rests at `at + normal · row.size`, tangent to the surface, the radius
+  being the snapshot `stick` read. Gated on the floor: the landing gate
+  asserts `y` equals the radius at landing exactly (the curve is `[0.5,
+  0]` so that radius is neither 0 nor ONE — a mutation writing ONE for
+  the radius must be distinguishable); the flipped control asserts every
+  stuck row at its own radius. **A stuck row keeps its landing height as
+  it shrinks:** its segment is zero length (the sweep dropped its
+  velocity), so `collide` never fires again. Said in the manual, recorded
+  with the plate re-take as its trigger; not built unasked.
+- **The normal reaches `stick` by rill's new rule** (rill, this beat: a
+  pipe carries a producer's other outputs to the consumer's like-named
+  open ports; explicit wins; nothing by position). Before it, `collide`'s
+  normal, `t` and material rode ports no kernel could reach — beat 4's
+  manual said "ride the other ports" and nothing could read them. A prose
+  claim about a port is a gate to run, too.
+- **Rulings 20 and 23 in the manual**: the kernel-start move with its two
+  numbers; material as an opaque handle.
+
+### P5 mutations so far (5/5 bitten)
+
+| # | mutation | bitten by |
+|---|---|---|
+| R1 | rill: carried outputs bound by position | rill's carry gate (91 for 84) |
+| R2 | rill: the carry dropped | rill's carry gate (the refusal) |
+| S1 | `stick` without the offset | the landing gate (y = 0); the flipped control |
+| S2 | the offset along the flipped normal | the landing gate (y = −radius); the flipped control |
+| S3 | ONE for the radius | the landing gate (y = 1 cell, radius 0.5) |

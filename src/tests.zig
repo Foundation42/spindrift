@@ -1103,7 +1103,7 @@ test "collide | stick: a falling row lands on the floor — position the hit poi
     try spray.mountKernel(&reg, "k",
         \\spawn
         \\collide | stick
-        \\row.age | over row.life [1, 0] | write row.size
+        \\row.age | over row.life [0.5, 0] | write row.size
         \\perish
     , &diag);
     try spray.tick(.{ .frame = 0, .time_ns = 0 }, null, mock.asPlane());
@@ -1111,15 +1111,24 @@ test "collide | stick: a falling row lands on the floor — position the hit poi
     spray.knobs.rate = 0;
     try testing.expectEqual(fixed.fromInt(1), spray.pop.pos[1][0]);
     try testing.expectEqual(@as(u8, 0), spray.pop.stuck[0]);
-    try spray.tick(.{ .frame = 2, .time_ns = 2 * std.time.ns_per_s }, null, mock.asPlane()); // 1 → −1 would cross: lands at 0
+    // The resting offset (ruling 24): the row rests ABOVE the surface by
+    // exactly the radius it had when it landed — the snapshot `stick` read.
+    // Mutation: no offset (y = 0); the normal's sign flipped (y = −size);
+    // ONE for the size (y = 1 cell).
+    const radius_at_landing = spray.pop.size[0];
+    try testing.expect(radius_at_landing > 0 and radius_at_landing != fixed.ONE);
+    try spray.tick(.{ .frame = 2, .time_ns = 2 * std.time.ns_per_s }, null, mock.asPlane()); // 1 → −1 would cross: lands at 0 + radius
     try testing.expectEqual(@as(u32, 0), spray.last.refusals);
-    try testing.expectEqual(@as(Fixed, 0), spray.pop.pos[1][0]);
+    try testing.expectEqual(radius_at_landing, spray.pop.pos[1][0]);
     try testing.expectEqual(@as(Fixed, 0), spray.pop.vel[1][0]);
     try testing.expectEqual(@as(u8, 1), spray.pop.stuck[0]);
-    // Stuck: it stays, it ages, and its curve still runs it down.
+    // Stuck: it stays, it ages, and its curve still runs it down. It stays
+    // at its LANDING radius as it shrinks (a stuck row's segment is zero
+    // length, so `collide` never re-fires) — said in the manual; the plate
+    // re-take is where the picture's judge sees whether that shows.
     const size_at_landing = spray.pop.size[0];
     try spray.tick(.{ .frame = 3, .time_ns = 3 * std.time.ns_per_s }, null, mock.asPlane());
-    try testing.expectEqual(@as(Fixed, 0), spray.pop.pos[1][0]);
+    try testing.expectEqual(radius_at_landing, spray.pop.pos[1][0]);
     try testing.expectEqual(3 * std.time.ns_per_s, spray.pop.age_ns[0]);
     try testing.expect(spray.pop.size[0] < size_at_landing);
     try testing.expectEqual(fixed.fromInt(1), spray.pop.asRowPlane().read(0, spindrift.population.F_STUCK).scalar);
@@ -1193,7 +1202,10 @@ test "negative control, flipped: with `collide | stick` the floor and no world n
                     stuck += 1;
                     // Landed rows stay ON the floor — the first draft's
                     // gravity sank them 2.5 cells a tick after landing.
-                    try testing.expectEqual(@as(Fixed, 0), spray.pop.pos[1][id]);
+                    // Resting offset (ruling 24): above the floor by the row's
+                    // radius — constant here, no curve in this kernel.
+                    try testing.expectEqual(spray.pop.size[id], spray.pop.pos[1][id]);
+                    try testing.expect(spray.pop.size[id] > 0);
                     try testing.expectEqual(@as(Fixed, 0), spray.pop.vel[1][id]);
                 }
             }
