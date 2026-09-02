@@ -19,14 +19,14 @@ const struple = @import("struple");
 const fixed = @import("fixed.zig");
 const Population = @import("population.zig").Population;
 
-pub const FORMAT: i64 = 1;
+pub const FORMAT: i64 = 2; // 2: `stuck` rides (beat 4)
 
 /// The scalar and array keys, in the order they are packed (the map sorts
 /// them; this order is for the reader's eyes).
 const array_keys = [_][]const u8{
     "ids", "gen",  "pos_x", "pos_y", "pos_z", "vel_x", "vel_y", "vel_z",
     "age", "life", "seed",  "size",  "col_l", "col_a", "col_b", "kind",
-    "u0",  "u1",   "u2",    "u3",
+    "u0",  "u1",   "u2",    "u3", "stuck",
 };
 
 fn rowValue(pop: *const Population, key_index: usize, id: u32) i64 {
@@ -51,6 +51,7 @@ fn rowValue(pop: *const Population, key_index: usize, id: u32) i64 {
         17 => pop.userOf(id)[1],
         18 => pop.userOf(id)[2],
         19 => pop.userOf(id)[3],
+        20 => pop.stuck[id],
         else => unreachable,
     };
 }

@@ -42,6 +42,9 @@ pub const schema = [_]rill.row.Field{
     .{ .name = "size", .kind = .scalar },
     .{ .name = "colour", .kind = .vec3 },
     .{ .name = "kind", .kind = .scalar, .writable = false },
+    // 1 once `stick` landed the row; 0 otherwise. A stuck row still ages
+    // and reads its curves (beat 4, ruled); the renderer may read it too.
+    .{ .name = "stuck", .kind = .scalar },
     .{ .name = "u0", .kind = .scalar },
     .{ .name = "u1", .kind = .scalar },
     .{ .name = "u2", .kind = .scalar },
@@ -56,7 +59,8 @@ pub const F_SEED: u16 = 4;
 pub const F_SIZE: u16 = 5;
 pub const F_COLOUR: u16 = 6;
 pub const F_KIND: u16 = 7;
-pub const F_U0: u16 = 8;
+pub const F_STUCK: u16 = 8;
+pub const F_U0: u16 = 9;
 
 pub const Population = struct {
     gpa: std.mem.Allocator,
@@ -78,6 +82,9 @@ pub const Population = struct {
     size: []Fixed,
     colour: [3][]Fixed,
     kind: []u8,
+    /// `stick`'s bit: the row landed and stays. Read by the kernel as
+    /// `row.stuck`, writable so a kernel may unstick.
+    stuck: []u8,
     /// User channels, `USER_CHANNELS` per row, contiguous per row so a
     /// kernel's per-row state is one slice — the one field that is not
     /// field-major, for exactly that reason.
@@ -114,6 +121,8 @@ pub const Population = struct {
         errdefer gpa.free(p.size);
         p.kind = try gpa.alloc(u8, capacity);
         errdefer gpa.free(p.kind);
+        p.stuck = try gpa.alloc(u8, capacity);
+        errdefer gpa.free(p.stuck);
         p.user = try gpa.alloc(Fixed, capacity * USER_CHANNELS);
         errdefer gpa.free(p.user);
         p.free = try gpa.alloc(u32, capacity);
@@ -141,6 +150,7 @@ pub const Population = struct {
         gpa.free(self.seed);
         gpa.free(self.size);
         gpa.free(self.kind);
+        gpa.free(self.stuck);
         gpa.free(self.user);
         gpa.free(self.free);
         inline for (0..3) |a| {
@@ -162,6 +172,7 @@ pub const Population = struct {
             self.seed[id] = 0;
             self.size[id] = 0;
             self.kind[id] = 0;
+            self.stuck[id] = 0;
             self.doomed[id] = false;
             inline for (0..3) |a| {
                 self.pos[a][id] = 0;
@@ -175,6 +186,7 @@ pub const Population = struct {
             @memset(self.seed, 0);
             @memset(self.size, 0);
             @memset(self.kind, 0);
+            @memset(self.stuck, 0);
             @memset(self.doomed, false);
             inline for (0..3) |a| {
                 @memset(self.pos[a], 0);
@@ -249,6 +261,7 @@ pub const Population = struct {
             F_SIZE => .{ .scalar = self.size[r] },
             F_COLOUR => .{ .vec3 = .{ self.colour[0][r], self.colour[1][r], self.colour[2][r] } },
             F_KIND => .{ .scalar = fixed.fromInt(self.kind[r]) },
+            F_STUCK => .{ .scalar = fixed.fromInt(self.stuck[r]) },
             else => .{ .scalar = self.userOf(r)[field - F_U0] },
         };
     }
@@ -267,6 +280,9 @@ pub const Population = struct {
             },
             F_COLOUR => if (val == .vec3) {
                 inline for (0..3) |a| self.colour[a][r] = val.vec3[a];
+            },
+            F_STUCK => if (val == .scalar) {
+                self.stuck[r] = if (val.scalar > 0) 1 else 0;
             },
             F_AGE, F_LIFE, F_SEED, F_KIND => {}, // refused at mount; never reached
             else => if (val == .scalar) {

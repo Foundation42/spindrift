@@ -547,3 +547,104 @@ the prose beside it (matryoshka `3fbc52c`). Recorded as the applet's
 first finding, and as the reason the per-spray selector's trigger is
 closer than "a second spray on one rig": a panel that could name its
 spray could also offer to light it.
+
+## P4 — the tracer words and the budget, the spindrift half (2026-09-02, §3.5, §3.6, G6)
+
+**Rulings that opened the beat (Christian, beat 3 accepted):** the refs
+gate is build-agnostic for pixels and ReleaseFast for timing bands, the
+build stamped in the manifest (§7.17); the half-pixel coverage stays,
+dust2's motes decide per-appearance (§7.18); the beat-3 calls ratified
+(§7.19); one new practice above — *a prose claim about a refusal is a
+gate to run*. P4's order is ruled: the World caller, `stick`, the budget,
+G6, the captures. The engine's tracer, its bank scheduling, the governor
+and the captures are matryoshka's; this entry is the half that lives
+here.
+
+- **`collide`, `ground`, `stick` are TRACER words** (`words.zig`,
+  `registerTracer`): a second table beside `WORDS`, registered by a host
+  that HAS a World. `collide` sends the row's segment — `pos` to `pos +
+  vel·dt` — through `World.collide` and pipes the hit point, normal, `t`
+  and material; `ground` asks for the nearest surface below and pipes
+  distance and normal; `stick <at>` writes the row's position and sets
+  `row.stuck`. A kernel naming any of them on a host without a World is
+  refused at mount by name — the prose claim, run as a gate. Exact at
+  the row: the host answers in Q16.16 once per query.
+- **The hit point is the host's, not the row's.** The first draft had
+  `stick` at `from + (to − from)·t`; that product floors twice and the
+  first gate run landed a row one Q16.16 ulp ABOVE the floor (`expected
+  0, found 1`). A landed row sits on the surface, so `World.Hit` carries
+  `at` and the mock floor answers `y` exactly; the engine converts its
+  float point once. Gated on a slanted crossing: `y` exact, `x` between.
+- **`stuck` means held, and the sweep holds it — one rule.** The first
+  draft zeroed the velocity in `stick`; the next tick's `gravity` put it
+  back and the landed row sank through the floor at 2.5 cells a tick. The
+  sweep now drops a stuck row's velocity every tick after the kernel's
+  writes land, and the integrate then moves it nowhere. Two decorations
+  fell out of that under mutation: `stick`'s own velocity write (deleted;
+  a `collide | stick` kernel re-hits at t = 0 every tick anyway, and a
+  kernel that does not is exactly the case the sweep's rule is for) and a
+  skipped integrate for stuck rows (deleted; integrating a zero velocity
+  is the same nowhere). A stuck row still ages and still reads its curves.
+  Read-aloud: `land` is the picture, not the operation; `settle` and
+  `rest` promise a motion that is not there; `stick` says what the bit
+  says.
+- **The scheduler** (`scheduler.zig`): `plan(candidates, budget, run,
+  order)` — a stable insertion sort over (staleness desc, in-frustum,
+  touches-dynamic, index), then the greedy fill; pure, allocation-free,
+  the same order on every machine. **One rule the campaign did not state
+  and this file does: the highest-priority spray always runs.** A budget
+  below the smallest spray is otherwise a dead sim that says `throttled`
+  forever; the budget bounds the total, it does not veto the first.
+- **A spray not run is carried over** (`Spray.carryOver`): fed time does
+  not advance for it, `staleness` grows, and `drift/@<name>/throttled`
+  fires as a MAILBOX occurrence carrying the staleness. A run resets
+  staleness to zero — that is what the word counts. The spawn-refusal
+  count is now `Stats.refused` and `drift/@<name>/refused` on the plane,
+  so the two facts have two words (ruled); matryoshka's bridge takes the
+  rename in its own commit under write-verbs beat 1.
+- **G6 lives here as a harness** (`budgetRun`): two sprays, one knob read
+  from the mock plane once per tick, `plan` over their live rows and
+  staleness; a burst over the budget throttles both in turn, two runs
+  give one byte string of dumps AND one hash of every plane write, and a
+  coarsened-and-throttled run replays too. Frustum and dynamic inputs
+  are the engine's — the harness feeds staleness only.
+
+### P4 mutations, this half (12: 10 bitten, 2 deleted as decorations, 2 gates rewritten)
+
+| # | mutation | bitten by |
+|---|---|---|
+| S1 | `stick` leaves the velocity | **survived** — the sweep's rule holds the row. A decoration; the line is deleted. |
+| S2 | `stick` never sets `stuck` | the landing gate; the flipped negative control |
+| S3 | `collide` tests a zero-length segment (ignores velocity) | the landing gate; the flipped control (floor and no-world agree again) |
+| S4 | `collide` answers the pre-hit position, not the hit point | the landing gate (`y = 1`, not 0); the flipped control |
+| S5 | the sweep does not drop a stuck row's velocity | the flipped control (the row sinks) — and after S1's deletion, the landing gate too |
+| S6 | the sweep integrates stuck rows too | **survived** — a zero velocity integrates nowhere. A decoration; the skip is deleted. |
+| S7 | `carryOver` does not grow staleness | both G6 gates (`a` starves `b`; `throttled_a` stays 0) |
+| S8 | `carryOver` says nothing on the plane (path misspelt) | both G6 gates; the staleness gate |
+| S9 | a wall-clock read in the sim path (staleness += clock mod 7) | **survived the dump-only replay gate** — the order of ticks never changed, only what the sim SAID. The gate now hashes every plane write (path, bytes, kind) across the two runs; bites. |
+| S10 | `plan`: the first does not always run | the scheduler's own gate; both G6 gates (nothing runs under a budget of 40) |
+| S11 | `plan`: staleness ignored | the scheduler's gate; both G6 gates |
+| S12 | `tick` does not reset staleness | **survived G6** — a spray that only grows staler still runs in the same order. New gate: the occurrence says 1, 2, then 1 after a run; bites. |
+
+**What S9 says, for the rule above:** *byte-identical replay* is the
+dumps AND the transcript. A gate that compares only the population can
+miss a clock that leaked into a number the sim publishes. The G6 harness
+compares both now, and the engine's G6 should too.
+
+### Recorded, not built
+
+| what | trigger |
+|---|---|
+| the frustum and dynamic-object priority inputs (the harness feeds staleness only) | the engine's bank — matryoshka's half of this beat |
+| releasing a stuck row (`write row.stuck 0` and it moves again) | the first kernel that wants a landed row to lift — rain on a moving thing |
+| a bounce (`collide` pipes the normal; no word reflects) | the first kernel that wants a spark to skip off the trim |
+| material by name (today a number the host chose, capped at 32767) | a kernel that reads `material` and wants a word |
+| segment queries against dynamic prims | fenced (Ironwood's rain) |
+
+### Rejected names
+
+`land`, `settle`, `rest` for `stick` (above). `rejected` and `denied` for
+the spawn-refusal count — a spray at capacity refuses a spawn, it does
+not judge it; `refused` is the verb the prose already used. `skipped`
+for the carry-over — a skipped tick sounds lost; a carried-over spray is
+owed a tick, and `throttled` (the campaign's word) keeps that debt.

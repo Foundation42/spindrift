@@ -82,11 +82,12 @@ tick, and two runs with the same flags print the same digest.
 |---|---|
 | `src/fixed.zig` | Q16.16 — the sim's one number |
 | `src/population.zig` | SoA rows, freelist, `(id, gen)` handles, the row plane a kernel mounts on |
-| `src/world.zig` | `World` vtable; `Floor` and `Nowhere` (the negative control) |
+| `src/world.zig` | `World` vtable — `collide` (segment → hit point, normal, t, material) and `ground`; `Floor` and `Nowhere` (the negative control) |
 | `src/dump.zig` | one canonical struple map per population |
 | `src/fields.zig` | the `Fields` host interface, the engine's kernel, the mock store and its cast door |
 | `src/spray.zig` | knobs, the six-phase tick, kernel mount, lattices, the aggregate cast, what the spray says |
-| `src/words.zig` | `spawn`, `gravity`, `perish`, `hear`, `over` — row words registered into rill |
+| `src/words.zig` | `spawn`, `gravity`, `perish`, `hear`, `over` — row words registered into rill; `collide`, `ground`, `stick` — the TRACER table a host with a World registers |
+| `src/scheduler.zig` | the row-steps budget over sprays: `plan` by staleness, frustum, dynamic, index — the first always runs |
 | `kernels/embers.rill`, `kernels/smoke.rill` | the first two kernels; embers is `drift-run`'s default |
 | `docs/drift-words.md` | the words manual, parity-gated both ways |
 | `src/run.zig` | `drift-run` |

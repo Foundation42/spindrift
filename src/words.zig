@@ -1,8 +1,14 @@
 //! words — spindrift's operators, registered into rill's registry like
 //! every other word.
 //!
-//! Three in beat 1, one in beat 2, one in beat 3 (campaign §3.3, §3.4,
-//! ruled 2026-09-01), each a row word:
+//! Three in beat 1, one in beat 2, one in beat 3, three in beat 4 (campaign
+//! §3.3, §3.4, §3.5, ruled 2026-09-01/02), each a row word. The beat-4
+//! three are the TRACER words — `collide`, `ground`, `stick` — the host's
+//! words (§7.7): registered by a host that has a `World` through
+//! `registerTracer`, so a kernel naming one on a host without is refused at
+//! mount as an unknown word. Their kernels are exact at the row because the
+//! `World` answers in fixed point: the host does its float query once and
+//! converts at the boundary, as the lattice does.
 //! meaningful only on a spray, with an exact integer kernel and `row.only`
 //! set. A plane program that names one is refused at PARSE by name — the
 //! "refuse at mount" the campaign asked for, one door earlier. (The first
@@ -122,6 +128,96 @@ fn kOver(ctx: *row.Ctx) row.Error!void {
     const seg: usize = @intCast(t >> fixed.FRAC_BITS);
     const frac: Fixed = @intCast(t & (fixed.ONE - 1));
     ctx.out[0] = try row.kernels.lerpVal(ctx, frac, knots[seg], knots[seg + 1]);
+}
+
+/// `collide` — the row's move this tick, `pos → pos + vel · dt`, against
+/// the world. A hit emits the hit point (port 0), the normal (1), `t` (2)
+/// and the material (3); no hit emits nothing and the row's flow ends
+/// quietly there. A stuck row moves nothing and so hits nothing.
+fn kCollide(ctx: *row.Ctx) row.Error!void {
+    const s = try sprayOf(ctx);
+    const p = &s.pop;
+    const r = ctx.row_index;
+    const from: fixed.Vec = .{ p.pos[0][r], p.pos[1][r], p.pos[2][r] };
+    const to: fixed.Vec = .{ from[0] +% fixed.mul(p.vel[0][r], ctx.dt), from[1] +% fixed.mul(p.vel[1][r], ctx.dt), from[2] +% fixed.mul(p.vel[2][r], ctx.dt) };
+    const hit = s.world.collide(from, to) orelse return;
+    ctx.out[0] = .{ .vec3 = hit.at };
+    ctx.out[1] = .{ .vec3 = hit.normal };
+    ctx.out[2] = .{ .scalar = hit.t };
+    ctx.out[3] = .{ .scalar = fixed.fromInt(@intCast(@min(hit.material, 32767))) };
+}
+
+/// `ground` — the nearest surface below the row: signed distance (port 0)
+/// and its normal (1). A world with no ground says nothing.
+fn kGround(ctx: *row.Ctx) row.Error!void {
+    const s = try sprayOf(ctx);
+    const p = &s.pop;
+    const r = ctx.row_index;
+    const g = s.world.ground(.{ p.pos[0][r], p.pos[1][r], p.pos[2][r] }) orelse return;
+    ctx.out[0] = .{ .scalar = g.distance };
+    ctx.out[1] = .{ .vec3 = g.normal };
+}
+
+/// `stick` — land the row where it hit: position the hit point, velocity
+/// zero, `row.stuck` set. A stuck row still ages and still reads its
+/// curves. Read-aloud: `collide | stick` is the ember on the plate and the
+/// spark on the trim in one breath; `land` fit the plate and not the wall,
+/// `settle`/`rest` read as easing, not a stop.
+fn kStick(ctx: *row.Ctx) row.Error!void {
+    const at = try ctx.vec3(0);
+    try ctx.write(.{ .field = population.F_POS }, .replace, .{ .vec3 = at });
+    // No velocity write here: the sweep drops a stuck row's velocity every
+    // tick (spray.zig), which is what `stuck` MEANS. The first draft zeroed
+    // it here too; the mutation that deleted this line survived every gate,
+    // so one rule in two places became one rule (beat 4).
+    try ctx.write(.{ .field = population.F_STUCK }, .replace, .{ .scalar = fixed.ONE });
+}
+
+/// The tracer words — a host with a `World` registers these beside the
+/// core; a host without leaves a kernel that names one to refuse at mount.
+pub const TRACER = [_]rill.OpDef{
+    .{
+        .name = "collide",
+        .outputs = &.{
+            .{ .name = "at", .ty = Tag.any },
+            .{ .name = "normal", .ty = Tag.any },
+            .{ .name = "t", .ty = Tag.number },
+            .{ .name = "material", .ty = Tag.number },
+        },
+        .help = "Row word (host): the row's move this tick against the world. On a hit, the hit point (piped on), then normal, t, material; no hit, nothing — `collide | stick`.",
+        .class = .reads,
+        .routes = .anywhere,
+        .row = rowOnly(kCollide),
+        .eval = planeRefuse,
+    },
+    .{
+        .name = "ground",
+        .outputs = &.{
+            .{ .name = "distance", .ty = Tag.number },
+            .{ .name = "normal", .ty = Tag.any },
+        },
+        .help = "Row word (host): the nearest surface below the row — signed distance (piped on) and its normal.",
+        .class = .reads,
+        .routes = .anywhere,
+        .row = rowOnly(kGround),
+        .eval = planeRefuse,
+    },
+    .{
+        .name = "stick",
+        .inputs = &.{.{ .name = "at", .ty = Tag.any }},
+        .help = "Row word: land the row at `at` — position there, velocity zero, row.stuck set. A stuck row still ages and reads its curves. `collide | stick`.",
+        .class = .reads,
+        .routes = .anywhere,
+        .row = rowOnly(kStick),
+        .eval = planeRefuse,
+    },
+};
+
+/// Register the tracer words. A host calls this when it has a `World` to
+/// answer them — matryoshka on its CPU twin tracer, `drift-run` on the mock
+/// floor. Call after `register`.
+pub fn registerTracer(reg: *rill.Registry) !void {
+    for (TRACER) |def| _ = try reg.register(def);
 }
 
 pub const WORDS = [_]rill.OpDef{

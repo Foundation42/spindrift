@@ -104,8 +104,13 @@ pub const Casting = struct {
 pub const Stats = struct {
     spawned: u32 = 0,
     died: u32 = 0,
-    /// Spawns refused because the population was at capacity.
-    throttled: u32 = 0,
+    /// Spawns refused because the population was at capacity. Was
+    /// `throttled` until beat 4, when `throttled` became the scheduler's
+    /// word (a spray carried over for budget) — two facts, two words.
+    refused: u32 = 0,
+    /// This tick was not run: the scheduler carried the spray over and
+    /// said `throttled` on its mailbox (beat 4, G6).
+    carried_over: bool = false,
     /// Rows the sweep evaluated — the budget unit (§3.6), counted BY the
     /// sweep per chunk, never assumed from the live count (mutation M11,
     /// beat 0).
@@ -279,6 +284,9 @@ pub const Spray = struct {
     started: bool = false,
     ticks: u64 = 0,
     last: Stats = .{},
+    /// Ticks this spray has been carried over by the scheduler since it
+    /// last ran — the first priority input, fed-time only. Reset by `tick`.
+    staleness: u64 = 0,
     /// The first refusal's words from the last tick, for the host's log.
     last_refusal: rill.registry.Detail = .{},
     chunk_steps: []u32 = &.{},
@@ -446,7 +454,28 @@ pub const Spray = struct {
         self.castPhase(&stats);
         self.last = stats;
         self.ticks += 1;
+        self.staleness = 0;
         if (plane) |p| try self.say(p);
+    }
+
+    /// The scheduler's other answer: this tick is not run. Fed time is not
+    /// advanced (the next `tick` covers the gap in one larger dt — fed, so
+    /// replay holds), staleness grows, and `drift/@<name>/throttled` fires
+    /// as a MAILBOX occurrence carrying how long the spray has waited. The
+    /// spawn-refusal COUNT keeps its own word, `refused`.
+    pub fn carryOver(self: *Spray, plane: ?rill.Plane) !void {
+        self.staleness += 1;
+        self.last = .{ .carried_over = true };
+        const p = plane orelse return;
+        var pk = struple.Packer.init(self.gpa);
+        defer pk.deinit();
+        try pk.appendInt(@intCast(self.staleness));
+        var path_buf: [256]u8 = undefined;
+        const path = std.fmt.bufPrint(&path_buf, "plane.drift.@{s}.throttled", .{self.name}) catch return error.OutOfMemory;
+        p.write(path, pk.bytes(), .occurrence, .base, 0) catch |err| return switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            else => {},
+        };
     }
 
     // -- phase 1: broadcasts ---------------------------------------------------
@@ -614,7 +643,7 @@ pub const Spray = struct {
         self.spawn_acc -= @as(i128, owed) * one_row;
         while (owed > 0) : (owed -= 1) {
             const id = self.pop.spawn() orelse {
-                stats.throttled += owed;
+                stats.refused += owed;
                 return;
             };
             const p = &self.pop;
@@ -720,6 +749,19 @@ pub const Spray = struct {
         while (id < end) : (id += 1) {
             if (!p.alive[id]) continue;
             if (s.kernel) |*k| k.rt.evalRow(&k.scratches[chunk_index], id, dt, s);
+            // A stuck row has no velocity (beat 4, ruled: position the hit
+            // point, velocity zero, `row.stuck` set). Held HERE, once, after
+            // the kernel's writes land — not in every force word. The first
+            // draft only zeroed the velocity in `stick`; the next tick's
+            // `gravity` put it back and the landed row sank through the
+            // floor at 2.5 cells a tick. This is the one rule: the integrate
+            // below then moves it nowhere (a draft that also skipped the
+            // integrate survived the mutation that removed the skip — a
+            // decoration, deleted). A stuck row still ages and still reads
+            // its curves; it just stays where it landed.
+            if (p.stuck[id] != 0) {
+                inline for (0..3) |a| p.vel[a][id] = 0;
+            }
             // integrate — a velocity moves its position; not a word
             inline for (0..3) |a| p.pos[a][id] += fixed.mul(p.vel[a][id], dt);
             // age — fed nanoseconds, exact

@@ -345,6 +345,9 @@ pub fn main() !u8 {
     defer reg.deinit();
     try rill.registerCore(&reg);
     try spindrift.words.register(&reg);
+    // drift-run has a World — the mock floor — so it answers the tracer
+    // words too; a host without one leaves them unregistered.
+    try spindrift.words.registerTracer(&reg);
 
     // The mock field store: declared channels, and a cast door so the
     // mounted rill's `cast` lands here under one owner — as a rill's does
@@ -470,7 +473,7 @@ pub fn main() !u8 {
         if ((o.every > 0 and t % o.every == 0) or last) {
             std.debug.print("tick {d:>6}  t={d}ms  live {d:>6}  +{d} -{d}{s}  steps {d}\n", .{
                 t,                                                   now.time_ns / std.time.ns_per_ms, spray.pop.live, spray.last.spawned, spray.last.died,
-                if (spray.last.throttled > 0) "  THROTTLED" else "", spray.last.row_steps,
+                if (spray.last.refused > 0) "  FULL" else "", spray.last.row_steps,
             });
         }
     }

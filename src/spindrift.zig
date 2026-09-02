@@ -38,6 +38,7 @@ pub const dump = @import("dump.zig");
 pub const fields = @import("fields.zig");
 pub const spray = @import("spray.zig");
 pub const words = @import("words.zig");
+pub const scheduler = @import("scheduler.zig");
 
 // The working surface, re-exported flat.
 pub const Fixed = fixed.Fixed;
@@ -61,6 +62,7 @@ test {
     _ = @import("dump.zig"); // one canonical struple
     _ = @import("fields.zig"); // the field interface, the kernel, the mock store
     _ = @import("spray.zig"); // knobs, the tick, the kernel mount, lattices, the aggregate cast
-    _ = @import("words.zig"); // spawn, gravity, perish
+    _ = @import("words.zig"); // spawn, gravity, perish, hear, over; collide, ground, stick
+    _ = @import("scheduler.zig"); // the row-steps budget over sprays
     _ = @import("tests.zig"); // the gates: G0 and its mutations
 }

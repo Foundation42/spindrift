@@ -22,8 +22,15 @@ const Vec = fixed.Vec;
 pub const Ground = struct { distance: Fixed, normal: Vec };
 
 /// What `collide` answers when the segment from → to crosses a surface:
-/// `t` in [0, 1] along the segment, and the normal at the crossing.
-pub const Hit = struct { t: Fixed, normal: Vec };
+/// `t` in [0, 1] along the segment, the hit POINT, the normal at the
+/// crossing, and the material the host names there (0 = the host said
+/// nothing; the mock floor is 0). Fixed point across the boundary: the
+/// host does its float query once and answers in the row's number, as the
+/// lattice does. The point is the host's, not `from + (to − from)·t` at
+/// the row: that product floors twice and landed a row one Q16.16 ulp
+/// above the floor (beat 4's first gate run), and a landed row sits ON
+/// the surface — the floor answers `y` exactly.
+pub const Hit = struct { t: Fixed, at: Vec, normal: Vec, material: u32 = 0 };
 
 pub const World = struct {
     ctx: *anyopaque,
@@ -60,7 +67,12 @@ pub const Floor = struct {
         const self: *Floor = @ptrCast(@alignCast(ctx));
         if (from[1] < self.y or to[1] >= self.y) return null;
         const t = fixed.fromRatio(@as(i64, from[1]) - self.y, @as(i64, from[1]) - to[1]);
-        return .{ .t = t, .normal = .{ 0, fixed.ONE, 0 } };
+        return .{
+            .t = t,
+            .at = .{ from[0] +% fixed.mul(to[0] -% from[0], t), self.y, from[2] +% fixed.mul(to[2] -% from[2], t) },
+            .normal = .{ 0, fixed.ONE, 0 },
+            .material = 0,
+        };
     }
 };
 
@@ -95,6 +107,11 @@ test "floor: collide answers t at the crossing, and only for a crossing" {
     // 4 above to 4 below: the crossing is at t = 0.5, exactly.
     const hit = w.collide(.{ 0, fixed.fromInt(4), 0 }, .{ 0, fixed.fromInt(-4), 0 }).?;
     try std.testing.expectEqual(fixed.HALF, hit.t);
+    try std.testing.expectEqual(Vec{ 0, 0, 0 }, hit.at);
+    // A slanted crossing lands on the surface EXACTLY in y, wherever x went.
+    const slant = w.collide(.{ 0, fixed.fromInt(5), 0 }, .{ fixed.fromInt(3), fixed.fromInt(-3), 0 }).?;
+    try std.testing.expectEqual(@as(Fixed, 0), slant.at[1]);
+    try std.testing.expect(slant.at[0] > 0 and slant.at[0] < fixed.fromInt(3));
     // 1 above to 3 below: t = 0.25.
     try std.testing.expectEqual(fixed.ONE / 4, w.collide(.{ 0, fixed.fromInt(1), 0 }, .{ 0, fixed.fromInt(-3), 0 }).?.t);
     // Both above: no crossing. Both below: already through, no crossing.

@@ -313,7 +313,7 @@ test "spawn: the first tick is the epoch and spawns nothing" {
     try testing.expectEqual(@as(u32, 0), b.spray.last.spawned);
 }
 
-test "spawn: at capacity the spray says throttled and never grows" {
+test "spawn: at capacity the spray says refused and never grows" {
     const gpa = testing.allocator;
     const b = try Bench.init(gpa, 2, 1);
     defer b.deinit(gpa);
@@ -322,7 +322,7 @@ test "spawn: at capacity the spray says throttled and never grows" {
     try b.tick(0, 0);
     try b.tick(1, std.time.ns_per_s);
     try testing.expectEqual(@as(u32, 2), b.spray.last.spawned);
-    try testing.expectEqual(@as(u32, 3), b.spray.last.throttled);
+    try testing.expectEqual(@as(u32, 3), b.spray.last.refused);
     try testing.expectEqual(@as(u32, 2), b.spray.pop.live);
 }
 
@@ -355,7 +355,7 @@ test "perish: a row is reaped on the first tick its age has reached its life, an
     try testing.expectEqual(@as(u16, 2), b.spray.pop.gen[0]);
 }
 
-test "perish: a kernel without it has immortal rows, and a full spray says throttled" {
+test "perish: a kernel without it has immortal rows, and a full spray says refused" {
     const gpa = testing.allocator;
     const b = try Bench.init(gpa, 4, 1);
     defer b.deinit(gpa);
@@ -364,7 +364,7 @@ test "perish: a kernel without it has immortal rows, and a full spray says throt
     var t: u64 = 0;
     while (t <= 6) : (t += 1) try b.tick(t, t * std.time.ns_per_s);
     try testing.expectEqual(@as(u32, 4), b.spray.pop.live);
-    try testing.expect(b.spray.last.throttled > 0);
+    try testing.expect(b.spray.last.refused > 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -512,7 +512,8 @@ test "G2: every drift word is row-legal, exact, row-only, and refuses the plane 
     const gpa = testing.allocator;
     var reg = try registry(gpa);
     defer reg.deinit();
-    for (words.WORDS) |w| {
+    try words.registerTracer(&reg);
+    for (words.WORDS ++ words.TRACER) |w| {
         const def = reg.get(reg.find(w.name).?);
         try testing.expect(def.row.legal());
         try testing.expect(def.row.only);
@@ -551,9 +552,9 @@ test "G2 mutation: a word with two adjacent wordless optionals is refused at reg
 test "G2: every drift word is named in the manual, and every word the manual names is registered" {
     const doc = @embedFile("drift-words.md");
     const gpa = testing.allocator;
-    var reg = try registry(gpa);
+    var reg = try tracerRegistry(gpa);
     defer reg.deinit();
-    for (words.WORDS) |w| {
+    for (words.WORDS ++ words.TRACER) |w| {
         var buf: [64]u8 = undefined;
         const needle = try std.fmt.bufPrint(&buf, "| `{s}", .{w.name});
         if (std.mem.indexOf(u8, doc, needle) == null) {
@@ -575,7 +576,7 @@ test "G2: every drift word is named in the manual, and every word the manual nam
         }
         rows += 1;
     }
-    try testing.expectEqual(words.WORDS.len, rows);
+    try testing.expectEqual(words.WORDS.len + words.TRACER.len, rows);
 }
 
 // ---------------------------------------------------------------------------
@@ -1067,4 +1068,301 @@ test "over: the curve may be a broadcast the applet edits — converted once per
     try b.tick(4, 4 * std.time.ns_per_s);
     try testing.expectEqual(@as(u32, 1), b.spray.last.refusals);
     try testing.expect(std.mem.indexOf(u8, b.spray.last_refusal.text(), "wants an array, got a number") != null);
+}
+
+// ---------------------------------------------------------------------------
+// Beat 4 — the tracer words, and the budget. `collide`/`ground`/`stick` are
+// the host's words: `registerTracer` is what a host with a World calls.
+// ---------------------------------------------------------------------------
+
+/// A registry with the core, the drift words AND the tracer words — a host
+/// that has a World, as drift-run and the engine do.
+fn tracerRegistry(gpa: std.mem.Allocator) !rill.Registry {
+    var reg = try registry(gpa);
+    errdefer reg.deinit();
+    try words.registerTracer(&reg);
+    return reg;
+}
+
+test "collide | stick: a falling row lands on the floor — position the hit point, velocity zero, stuck set — and still ages and reads its curve" {
+    // Mutation: `stick` leaves the velocity; the row falls through next tick.
+    // Mutation: `collide` tests last tick's segment; the row lands one tick late, below the floor.
+    const gpa = testing.allocator;
+    var reg = try tracerRegistry(gpa);
+    defer reg.deinit();
+    var mock = rill.MockPlane.init(gpa);
+    defer mock.deinit();
+    var floor = spindrift.Floor{};
+    var spray = try Spray.init(gpa, 4, 1, floor.asWorld());
+    defer spray.deinit();
+    // Born at y = 3, falling at 2 cells/s: the segment 3 → 1 misses, 1 → −1 hits at t = 0.5, y = 0.
+    spray.pos = .{ 0, fixed.fromInt(3), 0 };
+    spray.aim = .{ 0, -fixed.ONE, 0 };
+    spray.knobs = .{ .rate = fixed.fromInt(1), .speed = fixed.fromInt(2), .life_ns = 10 * std.time.ns_per_s };
+    var diag = rill.registry.Detail{};
+    try spray.mountKernel(&reg, "k",
+        \\spawn
+        \\collide | stick
+        \\row.age | over row.life [1, 0] | write row.size
+        \\perish
+    , &diag);
+    try spray.tick(.{ .frame = 0, .time_ns = 0 }, null, mock.asPlane());
+    try spray.tick(.{ .frame = 1, .time_ns = std.time.ns_per_s }, null, mock.asPlane()); // born, launched down at 2, moved to y = 1
+    spray.knobs.rate = 0;
+    try testing.expectEqual(fixed.fromInt(1), spray.pop.pos[1][0]);
+    try testing.expectEqual(@as(u8, 0), spray.pop.stuck[0]);
+    try spray.tick(.{ .frame = 2, .time_ns = 2 * std.time.ns_per_s }, null, mock.asPlane()); // 1 → −1 would cross: lands at 0
+    try testing.expectEqual(@as(u32, 0), spray.last.refusals);
+    try testing.expectEqual(@as(Fixed, 0), spray.pop.pos[1][0]);
+    try testing.expectEqual(@as(Fixed, 0), spray.pop.vel[1][0]);
+    try testing.expectEqual(@as(u8, 1), spray.pop.stuck[0]);
+    // Stuck: it stays, it ages, and its curve still runs it down.
+    const size_at_landing = spray.pop.size[0];
+    try spray.tick(.{ .frame = 3, .time_ns = 3 * std.time.ns_per_s }, null, mock.asPlane());
+    try testing.expectEqual(@as(Fixed, 0), spray.pop.pos[1][0]);
+    try testing.expectEqual(3 * std.time.ns_per_s, spray.pop.age_ns[0]);
+    try testing.expect(spray.pop.size[0] < size_at_landing);
+    try testing.expectEqual(fixed.fromInt(1), spray.pop.asRowPlane().read(0, spindrift.population.F_STUCK).scalar);
+}
+
+test "ground: the nearest surface below, distance and normal, and nothing over no world" {
+    const gpa = testing.allocator;
+    var reg = try tracerRegistry(gpa);
+    defer reg.deinit();
+    var floor = spindrift.Floor{ .y = fixed.fromInt(1) };
+    var spray = try Spray.init(gpa, 4, 1, floor.asWorld());
+    defer spray.deinit();
+    spray.pos = .{ 0, fixed.fromInt(4), 0 };
+    spray.knobs = .{ .rate = fixed.fromInt(1), .life_ns = 10 * std.time.ns_per_s };
+    var diag = rill.registry.Detail{};
+    try spray.mountKernel(&reg, "k", "ground | write row.u0\nground as d, n\nn | .y | write row.u1\n", &diag);
+    try spray.tick(.{ .frame = 0, .time_ns = 0 }, null, null);
+    try spray.tick(.{ .frame = 1, .time_ns = std.time.ns_per_s }, null, null);
+    try testing.expectEqual(fixed.fromInt(3), spray.pop.userOf(0)[0]);
+    try testing.expectEqual(fixed.ONE, spray.pop.userOf(0)[1]);
+    // No world: the flow is quiet, not zero.
+    var nowhere = spindrift.Nowhere{};
+    var spray2 = try Spray.init(gpa, 4, 1, nowhere.asWorld());
+    defer spray2.deinit();
+    spray2.knobs = spray.knobs;
+    try spray2.mountKernel(&reg, "k", "ground | write row.u0\n", &diag);
+    spray2.pop.userOf(0)[0] = 7; // pre-set, so silence is distinguishable from a zero
+    try spray2.tick(.{ .frame = 0, .time_ns = 0 }, null, null);
+    try spray2.tick(.{ .frame = 1, .time_ns = std.time.ns_per_s }, null, null);
+    try testing.expectEqual(@as(u32, 0), spray2.last.refusals);
+    try testing.expectEqual(@as(Fixed, 0), spray2.pop.userOf(0)[0]); // a spawn re-zeroes; the flow never wrote
+}
+
+test "the tracer words are the host's: a kernel naming one on a host without a World is refused at mount by name" {
+    const gpa = testing.allocator;
+    var reg = try registry(gpa); // core + drift words, no tracer
+    defer reg.deinit();
+    var nowhere = spindrift.Nowhere{};
+    var spray = try Spray.init(gpa, 4, 1, nowhere.asWorld());
+    defer spray.deinit();
+    var diag = rill.registry.Detail{};
+    try testing.expectError(error.Parse, spray.mountKernel(&reg, "k", "collide | stick\n", &diag));
+    try testing.expect(std.mem.indexOf(u8, diag.text(), "'collide'") != null);
+}
+
+test "negative control, flipped: with `collide | stick` the floor and no world now DISAGREE — the ledger's negative control has its caller" {
+    const gpa = testing.allocator;
+    var dumps: [2]?[]u8 = .{ null, null };
+    defer for (dumps) |d| if (d) |bytes| gpa.free(bytes);
+    const worlds = [_]bool{ true, false };
+    for (worlds, &dumps) |with_floor, *d| {
+        var reg = try tracerRegistry(gpa);
+        defer reg.deinit();
+        var floor = spindrift.Floor{};
+        var nowhere = spindrift.Nowhere{};
+        var spray = try Spray.init(gpa, 64, 7, if (with_floor) floor.asWorld() else nowhere.asWorld());
+        defer spray.deinit();
+        spray.pos = .{ 0, fixed.fromInt(2), 0 };
+        spray.knobs = .{ .rate = fixed.fromInt(8), .speed = fixed.fromInt(1), .spread = fixed.HALF, .life_ns = 4 * std.time.ns_per_s };
+        var diag = rill.registry.Detail{};
+        try spray.mountKernel(&reg, "k", "spawn\ngravity -10\ncollide | stick\nperish\n", &diag);
+        var t: u32 = 0;
+        while (t <= 20) : (t += 1) try spray.tick(.{ .frame = t, .time_ns = @as(u64, t) * std.time.ns_per_s / 4 }, null, null);
+        try testing.expectEqual(@as(u32, 0), spray.last.refusals);
+        d.* = try dump.write(gpa, &spray.pop, spray.ticks);
+        if (with_floor) {
+            var stuck: u32 = 0;
+            var id: u32 = 0;
+            while (id < spray.pop.capacity) : (id += 1) {
+                if (spray.pop.alive[id] and spray.pop.stuck[id] == 1) {
+                    stuck += 1;
+                    // Landed rows stay ON the floor — the first draft's
+                    // gravity sank them 2.5 cells a tick after landing.
+                    try testing.expectEqual(@as(Fixed, 0), spray.pop.pos[1][id]);
+                    try testing.expectEqual(@as(Fixed, 0), spray.pop.vel[1][id]);
+                }
+            }
+            try testing.expect(stuck > 0);
+        }
+    }
+    try testing.expect(!std.mem.eql(u8, dumps[0].?, dumps[1].?));
+}
+
+// ---------------------------------------------------------------------------
+// G6 — budget, not clock. Two sprays, one budget in row-steps read from
+// the plane, the scheduler deciding by fed inputs; a burst over budget
+// produces `throttled` as a mailbox occurrence, the tick replays
+// byte-identically, and a coarsened-and-throttled run replays too.
+// Mutation: a wall-clock read in the priority; two runs differ.
+// ---------------------------------------------------------------------------
+
+/// `said` hashes every write the two sprays made on the plane — path,
+/// bytes, kind — in order. The replay gate compares it as well as the
+/// dumps: a wall-clock read that leaked into the `throttled` payload
+/// (staleness) survived the dump-only gate, because the order of the
+/// ticks did not change, only what the sim SAID about them (beat 4).
+const BudgetRun = struct { a: []u8, b: []u8, throttled_a: usize, throttled_b: usize, coarsened: u32, said: u64 };
+
+fn budgetRun(gpa: std.mem.Allocator, budget: u32, with_field: bool) !BudgetRun {
+    var reg = try registry(gpa);
+    defer reg.deinit();
+    var mock = rill.MockPlane.init(gpa);
+    defer mock.deinit();
+    try mock.putValue("plane.drift.budget.row_steps", @as(i64, budget));
+    var store = spindrift.MockFields.init(gpa);
+    defer store.deinit();
+    try store.declare(.{ .name = "$wind", .default_decay_ns = 0 });
+    try store.deposit("caster", "$wind", .{ 0, 0, 0 }, 1, 8, null, "");
+    var nowhere = spindrift.Nowhere{};
+    var a = try Spray.init(gpa, 512, 1, nowhere.asWorld());
+    defer a.deinit();
+    a.name = "a";
+    a.knobs = .{ .rate = fixed.fromInt(200), .speed = fixed.fromInt(2), .spread = fixed.fromInt(2), .life_ns = 2 * std.time.ns_per_s };
+    if (with_field) {
+        a.fields = store.asFields();
+        a.samples = &.{.{ .channel = "$wind", .cell = fixed.ONE / 16 }};
+    }
+    var b = try Spray.init(gpa, 64, 2, nowhere.asWorld());
+    defer b.deinit();
+    b.name = "b";
+    b.knobs = .{ .rate = fixed.fromInt(8), .speed = fixed.ONE, .life_ns = 3 * std.time.ns_per_s };
+    var diag = rill.registry.Detail{};
+    try a.mountKernel(&reg, "k", if (with_field) "spawn\n$wind at row.pos | write row.u0\nperish\n" else "spawn\nperish\n", &diag);
+    try b.mountKernel(&reg, "k", "spawn\nperish\n", &diag);
+
+    const sprays = [_]*Spray{ &a, &b };
+    var coarsened: u32 = 0;
+    var t: u64 = 0;
+    while (t <= 24) : (t += 1) {
+        const now = rill.Now{ .frame = t, .time_ns = t * std.time.ns_per_s / 8 };
+        // The knob, read once per tick — the only budget the sim knows.
+        const knob: u32 = @intFromFloat(rill.types.asNumber(mock.store.get("plane.drift.budget.row_steps").?).?);
+        var cands: [2]spindrift.scheduler.Candidate = undefined;
+        for (sprays, 0..) |s, i| cands[i] = .{ .rows = s.pop.live, .priority = .{ .staleness = s.staleness } };
+        var runs: [2]bool = undefined;
+        var order: [2]u32 = undefined;
+        _ = spindrift.scheduler.plan(&cands, knob, &runs, &order);
+        for (sprays, runs) |s, go| {
+            if (go) try s.tick(now, null, mock.asPlane()) else try s.carryOver(mock.asPlane());
+        }
+        coarsened = @max(coarsened, a.coarsened());
+    }
+    var ta: usize = 0;
+    var tb: usize = 0;
+    var said = std.hash.Wyhash.init(0);
+    for (mock.writes.items) |w| {
+        said.update(w.path);
+        said.update(w.value);
+        said.update(@tagName(w.kind));
+        if (w.kind != .occurrence) continue;
+        if (std.mem.eql(u8, w.path, "plane.drift.@a.throttled")) ta += 1;
+        if (std.mem.eql(u8, w.path, "plane.drift.@b.throttled")) tb += 1;
+    }
+    return .{ .a = try dump.write(gpa, &a.pop, a.ticks), .b = try dump.write(gpa, &b.pop, b.ticks), .throttled_a = ta, .throttled_b = tb, .coarsened = coarsened, .said = said.final() };
+}
+
+test "G6: a burst over the budget throttles, as a mailbox occurrence, and the tick replays byte-identically" {
+    const gpa = testing.allocator;
+    const r1 = try budgetRun(gpa, 40, false);
+    defer gpa.free(r1.a);
+    defer gpa.free(r1.b);
+    const r2 = try budgetRun(gpa, 40, false);
+    defer gpa.free(r2.a);
+    defer gpa.free(r2.b);
+    // 200 rows/s at 8 ticks/s is 25 rows a tick into `a`; `b` is small.
+    // Once `a` is over the budget it is carried over and `b` runs, then
+    // `a`'s staleness puts it first — both get ticks, both get throttled.
+    try testing.expect(r1.throttled_a > 0);
+    try testing.expect(r1.throttled_b > 0);
+    try testing.expectEqualSlices(u8, r1.a, r2.a);
+    try testing.expectEqualSlices(u8, r1.b, r2.b);
+    try testing.expectEqual(r1.throttled_a, r2.throttled_a);
+    try testing.expectEqual(r1.said, r2.said);
+    // The gate can fail: a budget for everything throttles nobody and the
+    // populations differ from the throttled run's.
+    const r3 = try budgetRun(gpa, 100_000, false);
+    defer gpa.free(r3.a);
+    defer gpa.free(r3.b);
+    try testing.expectEqual(@as(usize, 0), r3.throttled_a + r3.throttled_b);
+    try testing.expect(!std.mem.eql(u8, r1.a, r3.a));
+}
+
+test "G6: a coarsened-and-throttled run replays too" {
+    const gpa = testing.allocator;
+    const r1 = try budgetRun(gpa, 40, true);
+    defer gpa.free(r1.a);
+    defer gpa.free(r1.b);
+    const r2 = try budgetRun(gpa, 40, true);
+    defer gpa.free(r2.a);
+    defer gpa.free(r2.b);
+    try testing.expect(r1.coarsened > 0);
+    try testing.expect(r1.throttled_a > 0);
+    try testing.expectEqualSlices(u8, r1.a, r2.a);
+    try testing.expectEqualSlices(u8, r1.b, r2.b);
+    try testing.expectEqual(r1.said, r2.said);
+}
+
+test "staleness is carry-overs since the spray last ran: the occurrence carries it, and a tick resets it" {
+    // Mutation: `tick` does not reset staleness — survived G6, because a
+    // spray that only ever grows staler still runs in the same order.
+    const gpa = testing.allocator;
+    var reg = try registry(gpa);
+    defer reg.deinit();
+    var mock = rill.MockPlane.init(gpa);
+    defer mock.deinit();
+    var nowhere = spindrift.Nowhere{};
+    var spray = try Spray.init(gpa, 8, 1, nowhere.asWorld());
+    defer spray.deinit();
+    spray.name = "s";
+    var diag = rill.registry.Detail{};
+    try spray.mountKernel(&reg, "k", "spawn\nperish\n", &diag);
+    try spray.carryOver(mock.asPlane());
+    try spray.carryOver(mock.asPlane());
+    try testing.expectEqual(@as(u64, 2), spray.staleness);
+    try testing.expect(spray.last.carried_over);
+    try spray.tick(.{ .frame = 0, .time_ns = 0 }, null, mock.asPlane());
+    try testing.expectEqual(@as(u64, 0), spray.staleness);
+    try testing.expect(!spray.last.carried_over);
+    try spray.carryOver(mock.asPlane());
+    try testing.expectEqual(@as(u64, 1), spray.staleness);
+    // The three occurrences said 1, 2, 1 — the count since it last ran.
+    var seen: [3]i64 = undefined;
+    var n: usize = 0;
+    for (mock.writes.items) |w| {
+        if (w.kind != .occurrence or !std.mem.eql(u8, w.path, "plane.drift.@s.throttled")) continue;
+        try testing.expect(n < 3);
+        seen[n] = @intFromFloat(rill.types.asNumber(w.value).?);
+        n += 1;
+    }
+    try testing.expectEqual(@as(usize, 3), n);
+    try testing.expectEqual([3]i64{ 1, 2, 1 }, seen);
+}
+
+test "dump: `stuck` rides, format 2" {
+    const gpa = testing.allocator;
+    var p = try spindrift.Population.init(gpa, 2);
+    defer p.deinit();
+    _ = p.spawn().?;
+    p.stuck[0] = 1;
+    const bytes = try dump.write(gpa, &p, 0);
+    defer gpa.free(bytes);
+    const s = try dump.readSummary(gpa, bytes);
+    defer gpa.free(s.ids);
+    try testing.expectEqual(@as(i64, 2), s.fmt);
+    try testing.expect(std.mem.indexOf(u8, bytes, "stuck") != null);
 }

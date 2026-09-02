@@ -23,7 +23,7 @@ import struple  # noqa: E402
 ARRAYS = [
     "ids", "gen", "pos_x", "pos_y", "pos_z", "vel_x", "vel_y", "vel_z",
     "age", "life", "seed", "size", "col_l", "col_a", "col_b", "kind",
-    "u0", "u1", "u2", "u3",
+    "u0", "u1", "u2", "u3", "stuck",
 ]
 SCALARS = ["fmt", "tick", "capacity", "live"]
 
@@ -44,8 +44,8 @@ def main(path):
     for k in SCALARS:
         if k not in m or not isinstance(m[k], int):
             fail(f"scalar {k!r} missing or not an int")
-    if m["fmt"] != 1:
-        fail(f"fmt {m['fmt']} is not 1")
+    if m["fmt"] != 2:
+        fail(f"fmt {m['fmt']} is not 2")
     live = m["live"]
     for k in ARRAYS:
         if k not in m or not isinstance(m[k], list):
