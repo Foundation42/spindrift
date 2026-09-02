@@ -1111,24 +1111,23 @@ test "collide | stick: a falling row lands on the floor — position the hit poi
     spray.knobs.rate = 0;
     try testing.expectEqual(fixed.fromInt(1), spray.pop.pos[1][0]);
     try testing.expectEqual(@as(u8, 0), spray.pop.stuck[0]);
-    // The resting offset (ruling 24): the row rests ABOVE the surface by
-    // exactly the radius it had when it landed — the snapshot `stick` read.
-    // Mutation: no offset (y = 0); the normal's sign flipped (y = −size);
-    // ONE for the size (y = 1 cell).
-    const radius_at_landing = spray.pop.size[0];
-    try testing.expect(radius_at_landing > 0 and radius_at_landing != fixed.ONE);
-    try spray.tick(.{ .frame = 2, .time_ns = 2 * std.time.ns_per_s }, null, mock.asPlane()); // 1 → −1 would cross: lands at 0 + radius
+    // Ruling 27b: the row's position is the CONTACT point, and the contact
+    // normal is stored on the row (zero until it lands); the resting offset
+    // — drawn at pos + normal · size — is the appearance's, gated in the
+    // engine. Mutation: `stick` stores no normal (up expected, zero found);
+    // `stick` offsets pos by the radius (y = 0.5, not 0).
+    try testing.expectEqual(fixed.Vec{ 0, 0, 0 }, fixed.Vec{ spray.pop.normal[0][0], spray.pop.normal[1][0], spray.pop.normal[2][0] });
+    try spray.tick(.{ .frame = 2, .time_ns = 2 * std.time.ns_per_s }, null, mock.asPlane()); // 1 → −1 would cross: lands ON the floor
     try testing.expectEqual(@as(u32, 0), spray.last.refusals);
-    try testing.expectEqual(radius_at_landing, spray.pop.pos[1][0]);
+    try testing.expectEqual(@as(Fixed, 0), spray.pop.pos[1][0]);
     try testing.expectEqual(@as(Fixed, 0), spray.pop.vel[1][0]);
     try testing.expectEqual(@as(u8, 1), spray.pop.stuck[0]);
-    // Stuck: it stays, it ages, and its curve still runs it down. It stays
-    // at its LANDING radius as it shrinks (a stuck row's segment is zero
-    // length, so `collide` never re-fires) — said in the manual; the plate
-    // re-take is where the picture's judge sees whether that shows.
+    try testing.expectEqual(fixed.Vec{ 0, fixed.ONE, 0 }, fixed.Vec{ spray.pop.normal[0][0], spray.pop.normal[1][0], spray.pop.normal[2][0] });
+    // Stuck: it stays ON the surface as it shrinks — no re-rest anywhere;
+    // the appearance keeps the shrinking disc tangent by construction.
     const size_at_landing = spray.pop.size[0];
     try spray.tick(.{ .frame = 3, .time_ns = 3 * std.time.ns_per_s }, null, mock.asPlane());
-    try testing.expectEqual(radius_at_landing, spray.pop.pos[1][0]);
+    try testing.expectEqual(@as(Fixed, 0), spray.pop.pos[1][0]);
     try testing.expectEqual(3 * std.time.ns_per_s, spray.pop.age_ns[0]);
     try testing.expect(spray.pop.size[0] < size_at_landing);
     try testing.expectEqual(fixed.fromInt(1), spray.pop.asRowPlane().read(0, spindrift.population.F_STUCK).scalar);
@@ -1202,10 +1201,10 @@ test "negative control, flipped: with `collide | stick` the floor and no world n
                     stuck += 1;
                     // Landed rows stay ON the floor — the first draft's
                     // gravity sank them 2.5 cells a tick after landing.
-                    // Resting offset (ruling 24): above the floor by the row's
-                    // radius — constant here, no curve in this kernel.
-                    try testing.expectEqual(spray.pop.size[id], spray.pop.pos[1][id]);
-                    try testing.expect(spray.pop.size[id] > 0);
+                    // ON the floor (ruling 27b: the contact is the position);
+                    // the contact normal stored, up.
+                    try testing.expectEqual(@as(Fixed, 0), spray.pop.pos[1][id]);
+                    try testing.expectEqual(fixed.ONE, spray.pop.normal[1][id]);
                     try testing.expectEqual(@as(Fixed, 0), spray.pop.vel[1][id]);
                 }
             }
@@ -1365,16 +1364,40 @@ test "staleness is carry-overs since the spray last ran: the occurrence carries 
     try testing.expectEqual([3]i64{ 1, 2, 1 }, seen);
 }
 
-test "dump: `stuck` rides, format 2" {
+test "dump: `stuck` and `normal` ride, format 3" {
     const gpa = testing.allocator;
     var p = try spindrift.Population.init(gpa, 2);
     defer p.deinit();
     _ = p.spawn().?;
     p.stuck[0] = 1;
+    p.normal[1][0] = fixed.ONE;
     const bytes = try dump.write(gpa, &p, 0);
     defer gpa.free(bytes);
     const s = try dump.readSummary(gpa, bytes);
     defer gpa.free(s.ids);
-    try testing.expectEqual(@as(i64, 2), s.fmt);
-    try testing.expect(std.mem.indexOf(u8, bytes, "stuck") != null);
+    try testing.expectEqual(@as(i64, 3), s.fmt);
+    // The VALUES, not the keys: a dump writing zero for `normal` kept the
+    // key and survived a substring check.
+    const stuck = try dump.column(gpa, bytes, "stuck");
+    defer gpa.free(stuck);
+    const nrm_y = try dump.column(gpa, bytes, "nrm_y");
+    defer gpa.free(nrm_y);
+    try testing.expectEqual(@as(i64, 1), stuck[0]);
+    try testing.expectEqual(@as(i64, fixed.ONE), nrm_y[0]);
+    try testing.expectEqual(@as(i64, 0), nrm_y[1]);
+}
+
+test "normal: zero on every unstuck row, and zero again on a reused slot" {
+    // Mutation: `clearRow` leaves `normal` — a row born into a slot that had
+    // landed carries the old contact normal, and the appearance would draw
+    // it a radius off its position.
+    var pop = try spindrift.population.Population.init(testing.allocator, 2);
+    defer pop.deinit();
+    const id = pop.spawn().?;
+    pop.asRowPlane().write(id, spindrift.population.F_NORMAL, .{ .vec3 = .{ 0, fixed.ONE, 0 } });
+    try testing.expectEqual(fixed.ONE, pop.normal[1][id]);
+    pop.kill(id);
+    const again = pop.spawn().?;
+    try testing.expectEqual(id, again);
+    try testing.expectEqual(@as(Fixed, 0), pop.normal[1][again]);
 }

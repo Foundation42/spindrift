@@ -45,6 +45,12 @@ pub const schema = [_]rill.row.Field{
     // 1 once `stick` landed the row; 0 otherwise. A stuck row still ages
     // and reads its curves (beat 4, ruled); the renderer may read it too.
     .{ .name = "stuck", .kind = .scalar },
+    // The contact normal `stick` stored; zero for every unstuck row. The
+    // resting offset is the APPEARANCE's (ruling 27b): a disc or a light is
+    // drawn at `pos + normal · size`, one rule for every row, so a landed
+    // row that shrinks stays on the surface by construction. `hear` samples
+    // at `pos`, the contact.
+    .{ .name = "normal", .kind = .vec3 },
     .{ .name = "u0", .kind = .scalar },
     .{ .name = "u1", .kind = .scalar },
     .{ .name = "u2", .kind = .scalar },
@@ -60,7 +66,8 @@ pub const F_SIZE: u16 = 5;
 pub const F_COLOUR: u16 = 6;
 pub const F_KIND: u16 = 7;
 pub const F_STUCK: u16 = 8;
-pub const F_U0: u16 = 9;
+pub const F_NORMAL: u16 = 9;
+pub const F_U0: u16 = 10;
 
 pub const Population = struct {
     gpa: std.mem.Allocator,
@@ -85,6 +92,8 @@ pub const Population = struct {
     /// `stick`'s bit: the row landed and stays. Read by the kernel as
     /// `row.stuck`, writable so a kernel may unstick.
     stuck: []u8,
+    /// The contact normal (`row.normal`), stored by `stick`; zero otherwise.
+    normal: [3][]Fixed,
     /// User channels, `USER_CHANNELS` per row, contiguous per row so a
     /// kernel's per-row state is one slice — the one field that is not
     /// field-major, for exactly that reason.
@@ -131,6 +140,7 @@ pub const Population = struct {
             p.pos[a] = try gpa.alloc(Fixed, capacity);
             p.vel[a] = try gpa.alloc(Fixed, capacity);
             p.colour[a] = try gpa.alloc(Fixed, capacity);
+            p.normal[a] = try gpa.alloc(Fixed, capacity);
         }
         // Scratch is zeroed once so a dump of a fresh population is a
         // function of capacity alone; every spawn re-zeroes its own row.
@@ -157,6 +167,7 @@ pub const Population = struct {
             gpa.free(self.pos[a]);
             gpa.free(self.vel[a]);
             gpa.free(self.colour[a]);
+            gpa.free(self.normal[a]);
         }
     }
 
@@ -178,6 +189,7 @@ pub const Population = struct {
                 self.pos[a][id] = 0;
                 self.vel[a][id] = 0;
                 self.colour[a][id] = 0;
+                self.normal[a][id] = 0;
             }
             @memset(self.userOf(id), 0);
         } else {
@@ -192,6 +204,7 @@ pub const Population = struct {
                 @memset(self.pos[a], 0);
                 @memset(self.vel[a], 0);
                 @memset(self.colour[a], 0);
+                @memset(self.normal[a], 0);
             }
             @memset(self.user, 0);
         }
@@ -262,6 +275,7 @@ pub const Population = struct {
             F_COLOUR => .{ .vec3 = .{ self.colour[0][r], self.colour[1][r], self.colour[2][r] } },
             F_KIND => .{ .scalar = fixed.fromInt(self.kind[r]) },
             F_STUCK => .{ .scalar = fixed.fromInt(self.stuck[r]) },
+            F_NORMAL => .{ .vec3 = .{ self.normal[0][r], self.normal[1][r], self.normal[2][r] } },
             else => .{ .scalar = self.userOf(r)[field - F_U0] },
         };
     }
@@ -283,6 +297,9 @@ pub const Population = struct {
             },
             F_STUCK => if (val == .scalar) {
                 self.stuck[r] = if (val.scalar > 0) 1 else 0;
+            },
+            F_NORMAL => if (val == .vec3) {
+                inline for (0..3) |a| self.normal[a][r] = val.vec3[a];
             },
             F_AGE, F_LIFE, F_SEED, F_KIND => {}, // refused at mount; never reached
             else => if (val == .scalar) {

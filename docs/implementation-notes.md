@@ -703,16 +703,20 @@ offset, re-ruled on Christian's screenshots of half-sunk discs (§7.24);
 stochastic coverage as P3c, the threshold knob not built (§7.25); the
 light gain (§7.26); ratified-as-reported and two practices (§7.27).
 
-- **The resting offset — `stick <at> <normal>`** (`words.zig`): the row
-  rests at `at + normal · row.size`, tangent to the surface, the radius
-  being the snapshot `stick` read. Gated on the floor: the landing gate
-  asserts `y` equals the radius at landing exactly (the curve is `[0.5,
-  0]` so that radius is neither 0 nor ONE — a mutation writing ONE for
-  the radius must be distinguishable); the flipped control asserts every
-  stuck row at its own radius. **A stuck row keeps its landing height as
-  it shrinks:** its segment is zero length (the sweep dropped its
-  velocity), so `collide` never fires again. Said in the manual, recorded
-  with the plate re-take as its trigger; not built unasked.
+- **The contact on the row, the offset in the appearance — `stick <at>
+  <normal>`** (`words.zig`, `population.zig`; ruling 24 as first ruled,
+  then 28): the first build offset `pos` by the radius in `stick`, and a
+  stuck row kept its landing height as it shrank — its segment is zero
+  length once the sweep drops its velocity, so `collide` never fires
+  again, and a re-rest in the sweep would have needed the contact stored
+  anyway. Re-ruled the same hour: `pos` is the contact, `row.normal` is
+  the contact normal (a vec3 field, zero for every unstuck row, zeroed on
+  spawn like the rest), and the appearance draws every row at `pos +
+  normal · size` — one rule, no stuck branch, a shrinking ember tangent by
+  construction; `hear` samples at the contact. Dump format 3 carries
+  `nrm_x/y/z`. Gates: the landing gate (on the floor, normal up, zero
+  before landing, still on the floor after shrinking), the flipped
+  control, the dump, and a reused slot's normal zero.
 - **The normal reaches `stick` by rill's new rule** (rill, this beat: a
   pipe carries a producer's other outputs to the consumer's like-named
   open ports; explicit wins; nothing by position). Before it, `collide`'s
@@ -728,6 +732,10 @@ light gain (§7.26); ratified-as-reported and two practices (§7.27).
 |---|---|---|
 | R1 | rill: carried outputs bound by position | rill's carry gate (91 for 84) |
 | R2 | rill: the carry dropped | rill's carry gate (the refusal) |
-| S1 | `stick` without the offset | the landing gate (y = 0); the flipped control |
-| S2 | the offset along the flipped normal | the landing gate (y = −radius); the flipped control |
-| S3 | ONE for the radius | the landing gate (y = 1 cell, radius 0.5) |
+| S1 | `stick` without the offset (first build) | the landing gate (y = 0); the flipped control — the build then moved (28) |
+| S2 | the offset along the flipped normal (first build) | the landing gate (y = −radius); the flipped control |
+| S3 | ONE for the radius (first build) | the landing gate (y = 1 cell, radius 0.5) |
+| S4 | `stick` stores no normal | the landing gate; the flipped control (up expected, zero found) |
+| S5 | `stick` still offsets `pos` by the radius | the landing gate (y = 0.5, not 0); the flipped control |
+| S6 | `clearRow` leaves `normal` | the reused-slot gate |
+| S7 | the dump writes zero for `normal` | the dump gate — **after a rewrite**: a key-only substring check let it through; the gate reads the column’s VALUE now |

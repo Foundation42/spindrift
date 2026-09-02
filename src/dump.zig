@@ -19,14 +19,14 @@ const struple = @import("struple");
 const fixed = @import("fixed.zig");
 const Population = @import("population.zig").Population;
 
-pub const FORMAT: i64 = 2; // 2: `stuck` rides (beat 4)
+pub const FORMAT: i64 = 3; // 2: `stuck` rides (beat 4); 3: `normal`, the contact (beat 5, ruling 27b)
 
 /// The scalar and array keys, in the order they are packed (the map sorts
 /// them; this order is for the reader's eyes).
 const array_keys = [_][]const u8{
     "ids", "gen",  "pos_x", "pos_y", "pos_z", "vel_x", "vel_y", "vel_z",
     "age", "life", "seed",  "size",  "col_l", "col_a", "col_b", "kind",
-    "u0",  "u1",   "u2",    "u3", "stuck",
+    "u0",  "u1",   "u2",    "u3", "stuck", "nrm_x", "nrm_y", "nrm_z",
 };
 
 fn rowValue(pop: *const Population, key_index: usize, id: u32) i64 {
@@ -52,6 +52,9 @@ fn rowValue(pop: *const Population, key_index: usize, id: u32) i64 {
         18 => pop.userOf(id)[2],
         19 => pop.userOf(id)[3],
         20 => pop.stuck[id],
+        21 => pop.normal[0][id],
+        22 => pop.normal[1][id],
+        23 => pop.normal[2][id],
         else => unreachable,
     };
 }
@@ -152,6 +155,33 @@ pub fn readSummary(gpa: std.mem.Allocator, bytes: []const u8) !Summary {
         .live = @intCast(try getInt(a, map, "live")),
         .ids = try ids.toOwnedSlice(gpa),
     };
+}
+
+/// One array column by key, as the reader sees it — a gate's way to check
+/// a VALUE rode the dump, not just a key (a mutation that wrote zero for
+/// `normal` survived a key-only check). Owned by the caller.
+pub fn column(gpa: std.mem.Allocator, bytes: []const u8, key: []const u8) ![]i64 {
+    var arena_impl = std.heap.ArenaAllocator.init(gpa);
+    defer arena_impl.deinit();
+    const a = arena_impl.allocator();
+    const v = struple.view(bytes);
+    if (!v.isMap()) return error.NotAMap;
+    const inner = (try v.containedItems(a)) orelse return error.NotAMap;
+    const map = struple.MapView.init(inner);
+    var kp = struple.Packer.init(a);
+    try kp.appendString(key);
+    const enc = (try map.get(kp.bytes())) orelse return error.MissingKey;
+    const items = (try struple.view(enc).containedItems(a)) orelse return error.NotAnArray;
+    var out: std.ArrayListUnmanaged(i64) = .empty;
+    errdefer out.deinit(gpa);
+    var r = struple.reader(items);
+    while (try r.next()) |e| {
+        switch (e) {
+            .int => |i| try out.append(gpa, @intCast(i)),
+            else => return error.NotAnInt,
+        }
+    }
+    return out.toOwnedSlice(gpa);
 }
 
 test "dump: an empty population is a fixed byte string, and reads back" {

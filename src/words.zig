@@ -164,20 +164,18 @@ fn kGround(ctx: *row.Ctx) row.Error!void {
 /// spark on the trim in one breath; `land` fit the plate and not the wall,
 /// `settle`/`rest` read as easing, not a stop.
 fn kStick(ctx: *row.Ctx) row.Error!void {
-    const s = try sprayOf(ctx);
     const at = try ctx.vec3(0);
     const normal = try ctx.vec3(1);
-    // The resting offset (ruling 24, re-ruled on the plate capture): a disc
-    // of radius `row.size` centred ON the hit point sits half inside the
-    // surface — half-discs on the grass, and a light row 6 µm inside the
-    // plate lit its underside. The row rests at `at + normal · size`,
-    // tangent to the surface; light rows inherit it. The normal rides the
-    // pipe from `collide` by name (rill: a producer's other outputs bind to
-    // the consumer's like-named open ports).
-    const size = s.pop.size[ctx.row_index];
-    var rest: fixed.Vec = undefined;
-    inline for (0..3) |a| rest[a] = at[a] +% fixed.mul(normal[a], size);
-    try ctx.write(.{ .field = population.F_POS }, .replace, .{ .vec3 = rest });
+    // The row's position is the CONTACT point, and the contact normal is
+    // stored on the row (ruling 27b): the resting offset — a disc or a
+    // light drawn at `pos + normal · size`, tangent to the surface — is the
+    // appearance's, one rule for every row with no stuck branch, so a
+    // landed row that shrinks stays on the surface by construction. The
+    // first draft offset `pos` here (ruling 24 as first ruled) and a
+    // shrinking ember kept its landing height. `hear` samples at the
+    // contact. The normal rides the pipe from `collide` by name.
+    try ctx.write(.{ .field = population.F_POS }, .replace, .{ .vec3 = at });
+    try ctx.write(.{ .field = population.F_NORMAL }, .replace, .{ .vec3 = normal });
     // No velocity write here: the sweep drops a stuck row's velocity every
     // tick (spray.zig), which is what `stuck` MEANS. The first draft zeroed
     // it here too; the mutation that deleted this line survived every gate,
@@ -217,7 +215,7 @@ pub const TRACER = [_]rill.OpDef{
     .{
         .name = "stick",
         .inputs = &.{ .{ .name = "at", .ty = Tag.any }, .{ .name = "normal", .ty = Tag.any } },
-        .help = "Row word: land the row at `at` + `normal` × row.size — resting tangent to the surface, row.stuck set; the sweep holds it. A stuck row still ages and reads its curves. `collide | stick` (the normal rides the pipe by name).",
+        .help = "Row word: land the row — position the contact point `at`, row.normal the contact normal, row.stuck set; the sweep holds it. The appearance draws a stuck row at pos + normal × size. A stuck row still ages and reads its curves. `collide | stick` (the normal rides the pipe by name).",
         .class = .reads,
         .routes = .anywhere,
         .row = rowOnly(kStick),
