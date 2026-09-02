@@ -44,8 +44,12 @@ day.** The same spelling and the same bits as spindrift's fifth word,
 now on the plane as well as the row. Two words with one name refuse at
 register, and spindrift's suite failed at every registry init the moment
 rill moved; the kernel here is deleted rather than kept beside rill's —
-one word, one home, and `over` never needed a host. The gates stay and
-still bite through `mountKernel`; the manual moves `over` out of the
+one word, one home, and `over` never needed a host. The diff was not a
+no-op at the edges: spindrift refused a life ≤ 0 and clamped a read far
+past life where rill's first draft clamped a negative silently and
+refused the far read as overflow; both of spindrift's answers are in
+core now (rill `529e7d8`), gated and bitten there. The gates here stay
+and still bite through `mountKernel`; the manual moves `over` out of the
 parity table into its own paragraph. That session's note that matryoshka
 registers no row words and lacks `row.life` was a stale picture: the
 bridge has registered spindrift's words since beat 1 and `life` has been

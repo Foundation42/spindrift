@@ -759,3 +759,12 @@ registers. The rill session's note that "no host row words are
 registered in matryoshka yet" and "`row.life` needs to be a real field"
 was a stale picture: the bridge has registered spindrift's words since
 beat 1 and `life` has been in the schema since P0 — nothing to wire.
+**The diff was not a no-op at the edges** (rill `529e7d8`, that session's
+follow-up): spindrift's kernel refused a life ≤ 0 where rill's refused
+only zero and clamped a negative to the first knot; and spindrift tested
+`t ≥ ONE` on the wide ratio where rill's narrowed first and refused a
+far-past-life read as overflow. Both of spindrift's answers went into
+core, each with a gate and a bitten mutation. The middle — the bits every
+frozen capture depends on — is identical; the witness for that is the
+engine's capture verify against the frozen hashes, not this suite, and
+the P5 agent runs it before anything re-freezes.
