@@ -739,3 +739,23 @@ light gain (§7.26); ratified-as-reported and two practices (§7.27).
 | S5 | `stick` still offsets `pos` by the radius | the landing gate (y = 0.5, not 0); the flipped control |
 | S6 | `clearRow` leaves `normal` | the reused-slot gate |
 | S7 | the dump writes zero for `normal` | the dump gate — **after a rewrite**: a key-only substring check let it through; the gate reads the column’s VALUE now |
+
+### `over` goes home to rill (2026-09-02, rill `23ac55c`)
+
+Another session, working in rill, landed `over` in rill's core the same
+day: `row.age | over row.life [1, 0.7, 0]`, the same spelling as
+spindrift's fifth word, the same bits (a clamped Q16.16 divide, the
+segment by shift, the fraction by mask, `lerpVal`), on the plane as well
+as the row — and a zero span refused by port name where spindrift refused
+a zero life by value. Two words with one name refuse at register:
+spindrift's suite failed at every registry init (`DuplicateOp`) the
+moment rill moved. The kernel here is deleted, not kept beside rill's:
+one word, one home, and `over` never needed a host — the ruling since
+beat 3 was that a kernel is a rill program. The over gates stay and still
+bite (they run rill's kernel through `mountKernel`); the zero-life gate
+now reads rill's words; the manual moves `over` out of the parity table
+into its own paragraph, because the table is the words THIS library
+registers. The rill session's note that "no host row words are
+registered in matryoshka yet" and "`row.life` needs to be a real field"
+was a stale picture: the bridge has registered spindrift's words since
+beat 1 and `life` has been in the schema since P0 — nothing to wire.

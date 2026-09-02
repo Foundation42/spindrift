@@ -97,38 +97,12 @@ fn kHear(ctx: *row.Ctx) row.Error!void {
     ctx.out[0] = if (want_grad) .{ .vec3 = lat.gradientAt(at) } else .{ .scalar = lat.sampleAt(at) };
 }
 
-/// `over <life> <curve>` — a value over normalised life: `t = age / life`
-/// clamped to [0, 1], then piecewise linear over the curve's knots, evenly
-/// spaced. Numbers or vec3s (a colour curve in Oklab lerps the same way).
-/// Exact by lerp. The curve is the first stateless array on the row — a
-/// literal converted once at mount, or a broadcast (`plane.drift.@self.
-/// size_curve`, the Spray applet's `:::curve`) converted once per change
-/// and shared. A life of zero refuses: "over nothing" is a question, not
-/// a value.
-fn kOver(ctx: *row.Ctx) row.Error!void {
-    const age = try ctx.scalar(0);
-    const life = try ctx.scalar(1);
-    const knots = try ctx.array(2);
-    if (life <= 0) return ctx.refuse("{s}: life is {d} — a value over nothing is not a value", .{ ctx.op.name, life });
-    if (age <= 0) {
-        ctx.out[0] = knots[0];
-        return;
-    }
-    // t = age / life in Q16.16, clamped; then (n − 1) segments over [0, 1].
-    var t: i64 = @divFloor(@as(i64, age) << fixed.FRAC_BITS, life);
-    if (t >= fixed.ONE) {
-        ctx.out[0] = knots[knots.len - 1];
-        return;
-    }
-    if (knots.len == 1) {
-        ctx.out[0] = knots[0];
-        return;
-    }
-    t *= @as(i64, @intCast(knots.len - 1));
-    const seg: usize = @intCast(t >> fixed.FRAC_BITS);
-    const frac: Fixed = @intCast(t & (fixed.ONE - 1));
-    ctx.out[0] = try row.kernels.lerpVal(ctx, frac, knots[seg], knots[seg + 1]);
-}
+// `over` was spindrift's fifth word from beat 3 until rill took it into its
+// core (rill `23ac55c`, beat 5): the same spelling, `row.age | over row.life
+// [1, 0.7, 0]`, the same bits — clamped divide, segment by shift, fraction
+// by mask, `lerpVal` — and now on the plane as well as the row, with a zero
+// span refused by name. One word, one home; the kernel that lived here is
+// deleted rather than kept beside it (a duplicate name refuses at register).
 
 /// `collide` — the row's move this tick, `pos → pos + vel · dt`, against
 /// the world. A hit emits the hit point (port 0), the normal (1), `t` (2)
@@ -254,20 +228,6 @@ pub const WORDS = [_]rill.OpDef{
         .class = .reads,
         .routes = .anywhere,
         .row = rowOnly(kPerish),
-        .eval = planeRefuse,
-    },
-    .{
-        .name = "over",
-        .inputs = &.{
-            .{ .name = "age", .ty = Tag.number },
-            .{ .name = "life", .ty = Tag.number },
-            .{ .name = "curve", .ty = Tag.array },
-        },
-        .outputs = &.{.{ .name = "out", .ty = Tag.any }},
-        .help = "Row word: a value over normalised life — `row.age | over row.life [1.0, 0.7, 0.0]` is 1.0 at birth, 0.7 halfway, 0.0 at the end, piecewise linear over evenly spaced knots. Numbers, or Oklab colours `[{l, a, b}, …]`; the curve may be a literal or a broadcast (`plane.drift.@self.size_curve`).",
-        .class = .reads,
-        .routes = .anywhere,
-        .row = rowOnly(kOver),
         .eval = planeRefuse,
     },
     .{

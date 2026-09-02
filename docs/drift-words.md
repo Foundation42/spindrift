@@ -34,7 +34,6 @@ perish
 | `spawn` | the spray's aim, speed, spread; the row's seed | `row.vel` | On a row's birth tick, launch it: `vel ← aim × speed`, plus a per-axis draw in ±spread from the seed. Nothing on later ticks. A kernel without it has rows that sit where they were born. |
 | `gravity <g>` | `g` — a literal, or a broadcast knob | `row.vel.y`, add mode | `vel.y += g · dt`, cells per second², negative is down. |
 | `perish` | `row.age`, `row.life` | retires the row | On the first tick the row's age has reached its life, mark it; the spray reaps in its serial phase. A kernel without it has immortal rows, and a full population says `throttled`. |
-| `over <life> <curve>` | `row.age` (piped), `row.life`, an array literal | — (a value) | A value over normalised life: `row.age \| over row.life [1.0, 0.7, 0.0]` is 1.0 at birth, 0.7 halfway, 0.0 at the end, piecewise linear over evenly spaced knots; `[{l: 1, a: 0, b: 0}, …]` does colours the same way in Oklab. Exact by lerp. The curve is the first stateless array on the row. A life of zero refuses. |
 | `collide` | `row.pos`, `row.vel`, the spray's `World` | — (emits: hit point, normal, `t`, material) | The host's word (campaign §7.7): the row's move this tick, `pos → pos + vel · dt`, against the world through the CPU twin tracer; on a hit the hit point pipes on and normal, `t`, material ride the other ports — a downstream word takes them by NAME (`stick`'s `normal` port; rill's rule, beat 5); no hit, the flow ends quietly. Exact at the row — the host does its float query once and answers in fixed point. **The segment is the kernel-start move** (ruling 20): every word in a row's sweep reads the tick's snapshot, so `collide` tests `pos → pos + vel·dt` with the velocity the row HAD when the kernel began, while the integrate moves it with the velocity the kernel LEFT. They differ by the tick's acceleration × dt²: 0.0007 cells at 60 Hz under −2.5, 0.1 cells on a 100 ms headless tick. A host that finds a row inside a solid places it on the face it came through. `material` is an opaque host handle (ruling 23): 0 is nothing; compare it only against a value the host publishes, never against an engine table index, never arithmetic. A kernel naming it on a host with no World is refused at mount as an unknown word. |
 | `ground` | `row.pos`, the spray's `World` | — (emits: signed distance, normal) | The host's word: the nearest surface below the row. |
 | `stick <at> <normal>` | the hit point, piped; the normal, by name from `collide` | `row.pos`, `row.normal`, `row.stuck` | Land the row: position the CONTACT point, `row.normal` the contact normal, `row.stuck` set. The resting offset is the appearance's (ruling 27b): a disc or a light is drawn at `pos + normal · size`, tangent to the surface, one rule for every row — so a landed row that shrinks stays on the surface by construction, and `hear` still samples at the contact. A stuck row has no velocity — the sweep drops whatever the kernel added, every tick, which is what `stuck` means — so it stays where it landed; it still ages and still reads its curves. `collide \| stick` is the ember on the plate and the spark on the trim in one breath. |
@@ -48,6 +47,19 @@ names the shape, not the operation. `over` reads as the division it is —
 age over life — and the knots ride behind it. For the landing word: `land`
 fit the plate and not the wall; `settle` and `rest` read as easing, not a
 stop; `stick` is the ember on the plate and the spark on the trim.
+
+## `over` — rill's word now
+
+`row.age | over row.life [1.0, 0.7, 0.0]` — a value over normalised life,
+piecewise linear over evenly spaced knots, numbers or Oklab colours, the
+curve a literal or a broadcast (`plane.drift.@self.size_curve`) — was
+spindrift's fifth word from beat 3. In beat 5 rill took it into its core
+(rill `23ac55c`): the same spelling, the same bits (the clamped divide,
+the segment by shift, the fraction by mask, `lerpVal`), on the plane as
+well as the row, a zero span refused by name. Spindrift's kernel is
+deleted rather than kept beside it; the gates here still run it through
+`mountKernel` and still bite. It is not in the table above because the
+table is the words THIS library registers (G2's parity gate counts them).
 
 ## Recorded, not built (beat 5)
 

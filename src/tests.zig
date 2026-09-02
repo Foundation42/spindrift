@@ -998,7 +998,8 @@ test "over: refuses a life of zero by name, and a live element in the curve at m
     try b.tick(0, 0);
     try b.tick(1, std.time.ns_per_s);
     try testing.expectEqual(@as(u32, 1), b.spray.last.refusals);
-    try testing.expect(std.mem.indexOf(u8, b.spray.last_refusal.text(), "life is 0") != null);
+    // rill's `over` (core since 23ac55c) refuses a zero span by port name.
+    try testing.expect(std.mem.indexOf(u8, b.spray.last_refusal.text(), "is zero") != null);
 }
 
 test "coarsened: said on the plane, change-only, the worst over the sampled channels, zero when the declared cell held, and a coarsened run replays byte-identical" {
