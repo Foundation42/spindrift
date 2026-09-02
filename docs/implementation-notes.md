@@ -49,6 +49,15 @@ Inherited from rill's ledger unchanged (`rill/docs/implementation-notes.md`,
 - *(beat 2, ratified 2026-09-02)* **A survived mutation names a
   decoration.** The right response to a mutation that survives and is
   right is to delete the thing it mutated, with the reason at the site.
+- *(beat 3, ratified 2026-09-02)* **A prose claim about a refusal is a
+  gate to run.** "X is refused" in a comment or a ledger row is a claim
+  the code can be asked; ask it before writing it down (matryoshka
+  `c609f0f`: the slash spelling the comment said was refused, the gate
+  found accepted).
+- *(beat 3, the applet's first outing)* **A panel whose subject is absent
+  must say so on the panel** — and the word it says it with is read
+  aloud on screen, beside its neighbours: `lit` beside `count 293` read
+  as particle lights; `mounted` it is.
 
 ## P0 — population and determinism (2026-09-01, §3.1, §3.6, G0)
 
