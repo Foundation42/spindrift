@@ -521,3 +521,20 @@ sketched:
   against Debug with `MTR_REFS_NO_BUILD=1` under the Debug rule. Needs a
   ruling on which build the refs bands belong to; the pixel gate does not
   care.
+
+### The first outing (2026-09-02)
+
+Christian mounted the Spray applet on a plain `matryoshka test_scene` and
+the Burst button did nothing. Not a bug in the button: the panel is bound
+to `embers`, the acceptance rig's spray, and without `--rig
+tools/refs/spray/test_scene-embers.rig` no such spray exists — `spray
+burst embers 200` was refused on the console bus, where the panel could
+not show it, and `count` reading zero could not say it either, because
+zero is also what an empty lit spray says. **A panel whose subject is
+absent must say so on the panel.** The bridge now publishes
+`drift/@<name>/lit` (1 at light, 0 at drop, absent when never lit) and
+`lit` is the panel's first meter, with the two ways to light the spray in
+the prose beside it (matryoshka `3fbc52c`). Recorded as the applet's
+first finding, and as the reason the per-spray selector's trigger is
+closer than "a second spray on one rig": a panel that could name its
+spray could also offer to light it.
