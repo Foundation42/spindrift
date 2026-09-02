@@ -1369,6 +1369,7 @@ test "dump: `stuck` and `normal` ride, format 3" {
     var p = try spindrift.Population.init(gpa, 2);
     defer p.deinit();
     _ = p.spawn().?;
+    _ = p.spawn().?; // a second, unstuck row — the dump carries LIVE rows only
     p.stuck[0] = 1;
     p.normal[1][0] = fixed.ONE;
     const bytes = try dump.write(gpa, &p, 0);
