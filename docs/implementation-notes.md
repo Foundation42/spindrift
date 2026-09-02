@@ -648,3 +648,28 @@ the spawn-refusal count — a spray at capacity refuses a spawn, it does
 not judge it; `refused` is the verb the prose already used. `skipped`
 for the carry-over — a skipped tick sounds lost; a carried-over spray is
 owed a tick, and `throttled` (the campaign's word) keeps that debt.
+
+### P4 — the other half, as reviewed here (matryoshka `307bbbb` … `8712c7b`; write-verbs `4abd61e`, `352943d`)
+
+Built by delegated agents to the ruled order and reviewed against the
+commits, the gate names and the frames. `src/spray_world.zig` is the
+World on the CPU twin tracer's static tree (mesh leaves in their own
+frame, boxes for the solid kinds, portals skipped, the dynamic tree not
+walked), bound each frame beside the sight solver; the point is the
+host's, snapped to the face's plane; on-a-face is judged at the row's
+resolution; a row found inside a solid is placed on the face it came
+through. The bank reads `drift/budget/row_steps` once per tick and plans
+with `scheduler.plan` from the plane's camera and last frame's dynamic
+pool; `throttled` is spindrift's mailbox occurrence, declared by the
+bridge, never written by it; the governor (`sweep_ms`, off by default)
+writes the knob from a `Source.governor` that replay re-applies and never
+regenerates. Engine G6 compares the transcript first. The refs manifest
+carries `# build: Debug` (ruling 17). Two findings the engine sent back
+here: **`collide` tests the kernel-start move and the integrate makes the
+kernel-end move** (rill's snapshot rule; a tunnel of a·dt² per tick;
+needs a ruling — the report's first), and the world-point mutation
+surviving on the plate by arithmetic luck (1.65 is 0.4 ulp above its
+floor) — the gate lands on a box too. Write-verbs beat 1 landed in the
+same window: the mask on the kind, a program's bare write refused at
+mount naming `hold`, the interim `.mul` fold deleted, the bank reading
+the plane's one fold.
