@@ -158,9 +158,16 @@ the perf publisher's cadence and demand gate. `kernels/cinders.rill`
 reads the curve after its literal — quiet with the path absent, so the
 captures stand unmoved.
 
-Gates, each with the mutation it bit: the knob write, `throttled`, the
-curve round-trip, the write-back baseline, the history's cap and order
-and its change gate. Recorded, not built: `size_curve` authored on the
+Gates, each with the mutation it bit: the knob write (the spray arm
+dropped — the authored rate stayed 40), `throttled` (zero never re-said),
+the curve round-trip (knots packed as scalars — the decoder said
+`NotAnArray`), the slider reading the lane fold instead of the base (the
+thumb became 200), the write-back baseline (the drag wrote nothing), the
+history's cap and order (61 where 11 was expected) and its change gate
+(an idle ring re-sent ten times). One real catch on the way, not a
+mutation: the first gate run found the plane folding a rill's lane over
+the published 400 — the slider must show the BASE, which `Plane.pathBase`
+now exposes. Matryoshka's suite: 2515 (was 2506). Recorded, not built: `size_curve` authored on the
 rig (the first rig that ships a curve); a HUD spray-knob write in the
 transcript (the first replay that needs a slider drag on a spray).
 
