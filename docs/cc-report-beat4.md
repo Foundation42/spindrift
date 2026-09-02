@@ -295,3 +295,102 @@ rename as its own commit first (`4abd61e`: the count is `refused`,
 published as `drift/@<name>/refused`, the applet's meter and copy with
 it), which is the order the ruling asked for: two facts, two words, and
 the `throttled` occurrence arrives with the engine's scheduler.
+
+## P3b, the half-beat — coals on the plate, and dust2's motes (matryoshka `6f22cc4`, `c416d50`; pushed)
+
+Built by a delegated agent after the beat's report went up, reviewed
+here against the commits, the gates and the frames. Suite 2574 before
+each commit; the bridge gates 234 → 237; nine refs unmoved at the end.
+
+**The `light` appearance, capped at four — `6f22cc4`.** `^spray
+appearance light` is admitted at reconcile (`metaball` and `prim` still
+refused by name); a light spray's rows are point lights and draw nothing
+else — no slot range, no chunk sent, no leaf names a row — and the
+appearance is part of the kind, so relinking rebuilds the spray. **The
+four:** the brightest by Oklab L among rows that give off light (L above
+1.0, exact in Q16.16), ties to the lower row id — row fields and the
+freelist's ids, so the same four on every machine and on a replay, and a
+set of equal rows keeps its four every frame. A near-tied set crossing
+swaps rank between frames: the recorded seam, met on the first capture
+(a new coal every third of a second pops the light from the oldest of
+the four to the newborn). Read-aloud: `rankLights`; rejected `rank`
+(names the order, not the act) and `pickLights` (a pick sounds
+arbitrary). **The unit mapping, said once and cited to the painted
+ember:** position through the sprite's own quantise; colour the surplus
+of the linear colour above 1.0, the shader's rule for what a sprite gives
+off restated once on the CPU; intensity with the CAP as the unit — a
+spray's four lights together are one painted ember (the first draft made
+each row an ember and the first capture washed the plate, the plume and
+the grass yellow); range twenty radii. The lights ride the painted
+embers' path one slot range later, straight from the bank; the CPU twin
+consumes no per-frame point light, so there was nothing there to ride.
+Six mutations, six bitten: the cap off; the brightness comparison
+dropped (the four oldest light); L ≤ 1 not excluded (the L 0.9 spray
+lights); the whole colour emitted (3.375 for 2.375); slots for every
+appearance (a light spray resident); appearance not part of the kind
+(relink does not rebuild).
+
+**dust2's motes decide the coverage question — `c416d50`.** The shafts
+are the map's authored light-shaft cards (additive effect cards the
+loader drops), found by loading them once under a throwaway print,
+reverted. `kernels/motes.rill`: 8 mm motes — `row.size` is the disc's
+RADIUS in the leaf, and two older kernel comments said "across" for the
+same numbers, respelled after review in `b4a126e`, comments only —
+eighty a second for fifteen seconds, a literal drift down the crossed
+pair's throat, L rising through 1.04 at mid-life; the pose the tunnel
+floor seven metres west of the shaft, looking east at the arch under the
+slatted skylight, the mote column at 5–9 m. **The finding, plainly:** a
+pixel is d/360 m at d metres, so the half-pixel rule makes an 8 mm mote
+a hit inside 8.1 m and a miss beyond. Mounted against bare at one frame:
+3 093 mote pixels of 921 600 under the shipped rule — the near half of
+the column as single faint specks, the far half gone; 13 873 under a
+temporary quarter-pixel threshold (one shader line, reverted) — the
+whole column as hard specks, each a full-opacity pixel claiming two to
+four times the area it covers. So the motes do not vanish at the
+intended size; half do, by distance, and a per-appearance threshold of
+0.25 brings the far half back at exactly the cost ruling 18 names.
+Neither the threshold nor fractional coverage was built: the threshold's
+home is a spelling the plane carries in three formats, a read-aloud for
+Christian. **A cost the capture found:** the mounted frame's traversal
+went 2.72 → 16.44 ms (Debug) — 1 198 live motes over the shaft's 8 × 12
+m fill two chunk leaves nearly every primary ray enters, and a particle
+leaf scans its rows linearly; beat 3's "most of them dead in a young
+spray" does not hold for a long-lived spray. Recorded with its trigger
+met: sub-chunk leaves or rows sorted within a chunk. `spray_gate.py
+verify` is now twelve minutes, dust2 loading three times in Debug.
+
+**The captures.** `test_scene-embers-plate` — the plume as before; the
+plate glows warm around the gnomon and the gnomon is lit orange on its
+side; and where the plate's shadow fell on the grass there is now a warm
+pool — the first ruling below. `test_scene-embers` (the gate's frozen
+pose) with the coals' warm light on the plate's near corner; unmounted
+AE=0 against the frozen ref. `oa_spirit3-sparks` byte-identical to beat
+4's — no light spray on that rig, nothing moved. `dust2-motes` — the
+skylit room, the sun striping the left wall, crates in the foreground;
+the motes are single faint pixels one has to look for. Manifest lines,
+hashes and the build stamp in `tools/refs/spray/manifest.txt`; lights
+cost nothing measurable on the plate pose (GPU 9.56 against 9.55 ms).
+
+**Needs a ruling (P3b).**
+5. **Four lights against a two-ray shadow budget.** The engine traces
+   shadow rays for the two strongest lights at a pixel and a margin-faded
+   third; the rest count unoccluded. With four near-tied coals over the
+   plate, the fourth's light passes through the plate onto the grass —
+   the warm pool in the capture; the same rig at two coals has its dark
+   shadow back. The painted ember sidesteps it with a Tier-0 blocker AABB
+   a spray light cannot name. Ways: a `light` spray names a blocker (its
+   bound entity's box, or the surface `ground` finds); the shadow budget
+   grows for spray lights; the cap spends as two when near-tied; or the
+   trade stands as recorded. Lean: the blocker from the bound entity —
+   it is what the painted ember does, and the spray is bound to the plate.
+6. **Where a per-appearance coverage threshold lives**, if a quarter
+   pixel is judged the fix for the motes: a second disc appearance with
+   its own number, or a coverage knob on the kind.
+7. **The light gain as the cap's sum** — a calibration with its reason,
+   for the picture's judge.
+
+**Recorded, not built (P3b):** the applet's per-spray selector (trigger
+fired — the acceptance rig carries two sprays; the panel says so and
+says its meters are rows, never lights); `hear $wind` for the motes
+(a scene that authors a wind field); sub-chunk leaves (trigger met);
+`metaball`, `prim` (each with its own capture).

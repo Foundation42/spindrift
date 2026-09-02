@@ -673,3 +673,20 @@ floor) — the gate lands on a box too. Write-verbs beat 1 landed in the
 same window: the mask on the kind, a program's bare write refused at
 mount naming `hold`, the interim `.mul` fold deleted, the bank reading
 the plane's one fold.
+
+### P3b — the half-beat, as reviewed here (matryoshka `6f22cc4`, `c416d50`)
+
+The `light` appearance: a light spray's rows are point lights and draw
+nothing else; the four brightest by Oklab L (ties by row id) among rows
+giving off light, from row fields and the freelist's ids alone; the unit
+mapping said once with the cap as the unit (four lights = one painted
+ember); the lights on the painted embers' path from the bank. Six
+mutations bitten. dust2's motes: the coverage finding in pixels (3 093
+under the half-pixel rule, 13 873 under a quarter; the near half of the
+column stays, the far half goes by distance), nothing built — the
+threshold's home is a spelling for Christian. Two findings for here: a
+long-lived spray fills its chunk leaves and a linear row scan costs 14
+ms of traversal (sub-chunk leaves, trigger met); and the rank-swap seam
+plus the two-ray shadow budget put the fourth coal's light through the
+plate (ruling asked). Also: `row.size` is the disc's RADIUS — two kernel
+comments said "across"; respelled in matryoshka after review.
