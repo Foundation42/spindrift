@@ -1,9 +1,7 @@
 # Implementation notes — the ledger
 
-**Status:** P3 (the first picture) in progress, 2026-09-02: the spindrift
-and rill half is built — `over`, the array literal on the row,
-`coarsened` on the plane, dirty chunks for the renderer. The renderer, the
-applet and G5 land in matryoshka and spark.
+**Status:** P3 (the first picture) built, 2026-09-02: G5 green and
+bitten; embers off the plate, sparks in the keep. G0–G5 green.
 
 Everything here is a decision made while building
 [spindrift-campaign.md](spindrift-campaign.md), recorded so the next
@@ -492,3 +490,34 @@ and spark's; this entry is the half that lives here.
 |---|---|
 | named colours in a curve (`[white, orange, dark]`) | a palette on the plane — the applet's `:::curve` may want one first |
 | `over` with knots at authored x positions (today evenly spaced) | a curve the applet cannot draw evenly |
+
+### P3 — the other half, as reviewed here (matryoshka `6ab0287` … `2be078b`, spark `6055875`)
+
+Not this repo's code, but this ledger is where the campaign's decisions
+live, and four were made against the renderer that the campaign doc only
+sketched:
+
+- **A sub-half-pixel sprite is a miss.** Coverage under facet 1 is the
+  disc against the cone footprint, analytic; at or above half a pixel is
+  a hit. Right for embers and sparks, wrong-shaped for distant dust, which
+  will vanish before it fades — dust2's motes are the customer that
+  decides whether the threshold becomes a per-appearance number.
+- **Oklab → linear sRGB once at upload, on the CPU.** The row carries
+  Oklab because the grade is Oklab-native; the leaf carries what the
+  shader shades. One conversion per dirty row per tick, never per ray.
+  An Oklab L past 1.0 becomes emitted light above the split — an ember's
+  core blows to near-white on purpose, recorded so it is not read as a
+  tonemap fault.
+- **Quantise once, in i128.** The upload snaps positions to the gauge
+  lattice when the scene has one and to the row's own Q16.16 grid
+  otherwise; the float path missed the index by a few percent at 500 m
+  and is the mutation the gate is paid for.
+- **The one JobSystem takes the sweep** the moment the budget showed it:
+  1.90 ms inline against a 5.2 ms frame at 3933 rows, 0.85 ms on
+  `common.jobs` from `main.zig`, frame hash byte-identical. The solver's
+  bake still makes a transient instance — recorded, trigger: a second
+  per-frame customer.
+- **`refs.py` builds ReleaseFast for itself**; the renderer verified
+  against Debug with `MTR_REFS_NO_BUILD=1` under the Debug rule. Needs a
+  ruling on which build the refs bands belong to; the pixel gate does not
+  care.

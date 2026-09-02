@@ -43,7 +43,7 @@ Each gate names the mutation that must bite. A gate that passes under its mutati
 
 **G4 — Fields out.** A smoke spray casts `$dankness`; an ear downstream reads above zero; the spray unmounts and the ear reads zero (casts are owned by their caster — ownership is the ceiling: the bag goes with its owner, at once). Mutation: remove the cast line; the ear never rises. **Green and bitten, beat 2.**
 
-**G5 — The leaf.** Matryoshka renders the population through `LEAF_PARTICLES`. Ordinary path first (rule 7): with no spray mounted, every frozen ref holds at AE=0. Then: a capture with one spray mounted differs from the frozen ref, and a capture with the same spray unmounted is AE=0 again. Mutation: leaf returns no hit; the mounted capture equals the frozen ref and the gate fails.
+**G5 — The leaf.** Matryoshka renders the population through `LEAF_PARTICLES`. Ordinary path first (rule 7): with no spray mounted, every frozen ref holds at AE=0. Then: a capture with one spray mounted differs from the frozen ref, and a capture with the same spray unmounted is AE=0 again. Mutation: leaf returns no hit; the mounted capture equals the frozen ref and the gate fails. **Green and bitten, beat 3** — nine refs at AE=0 before, after the leaf, and after the first picture; captures test_scene (acceptance) and oa_spirit3 (reach).
 
 **G6 — Budget, not clock.** The scheduler consumes a budget in row-steps per tick from a knob, never milliseconds. Under a spawn burst that exceeds the budget, `drift/<@em>/throttled` occurs and the tick still replays byte-identically. Mutation: read wall-clock anywhere in the sim; `repro-input` differs across two runs.
 
