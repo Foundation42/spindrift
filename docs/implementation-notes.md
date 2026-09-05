@@ -1069,3 +1069,18 @@ as albedo (the plate MOVED); the splat ignoring the normal (the
 underside an orange sheet — ruling 24's warm pool, for the last time);
 lights culled by screen position (behind == bare). The applet's copy no
 longer promises four lights.
+
+**Christian's finding on P11 (2026-09-06): the shadow leaks through the
+smoke.** Close to the plume, the helmet's shadow pattern shows inside
+the smoke — the card takes the tracer's sun visibility of the surface
+BEHIND it, pixel for pixel (P11's choice once the CSM proved empty in a
+traced scene), so whatever is shadowed behind a card shadows the card's
+fragments in that pattern. "Shadow buffer taking priority over the
+particles" is exactly what it is. Folded into P12 (his word: not a
+race): one visibility per CARD, sampled at the card's centre pixel in
+the vertex stage and carried flat — a card is lit or shadowed whole and
+nothing can pattern inside it; still the surface behind, still cheap.
+The true fix is recorded with its trigger: a sun depth pass over the
+traced geometry (the shadow_depth pipeline over the scene's triangles,
+not only the raster producer's meshes), so a card's own world position
+answers; trigger: a card whose area should be half in shadow.
