@@ -1013,3 +1013,59 @@ per-particle sort — ours sorts), its `abs()` soft-particle fade (ours is
 one-sided), its unlit cards (P11). A finding for the plan: a population
 whose kind changes by age spans two blend modes, so the pass must draw
 by kind after sorting — decide before P12's `blend add`.
+
+**Campaign 3, P11 "the light" (matryoshka `263046f`; nothing in
+spindrift's row).** The card lit by the world and the light rows as
+uncapped G-buffer splats — and a beat that found five things on the way.
+**The card:** albedo/emission by the leaf's rule; the albedo lit as a
+VOLUME's card — a hemisphere normal in the card's frame and a wrapped
+sun (a sphere's lee went black against the sky in the first build);
+the ambient the compose's own hemisphere at the card's normal, tint and
+fill folded in on the CPU (the pixel's env_diff is nothing against the
+sky, where half a plume stands — rejected for that; still bound for a
+probe-lit card later); the sun's visibility the TRACER's (sun_shadow's
+half-res image, the surface behind the card) times the CSM at the
+fragment where a raster producer drew one. **The CSM finding:** the
+"no shadow on the card" mutation SURVIVED at the plate pose; a
+diagnostic with smoke under the plate rendered the same bytes with and
+without the lookup — the CSM is the raster producer's, and a fully
+traced scene draws nothing into it. The tracer's own visibility is where
+a traced scene keeps its shadows, and a new pair (`test_scene-smoke-shade`,
+the smoke kind under the plate at the beneath pose) is the gate that
+mutation now bites. **The splats:** a second additive pipeline in the
+same pass, drawn before the cards, one instance per light row, the quad
+the sphere's projected box or the whole frame when the eye is inside the
+range or a corner is behind the camera (Christian's light behind the
+camera — G17's new gate, `test_scene-behind`, a beacon a metre and a
+half behind the eye lighting the plate's near half, a quarter of the
+frame's pixels; stood down, nothing); the fragment rebuilds the pixel's
+primary ray as traversal.comp does, takes the surface from the tracer's
+depth, normal and albedo from the G-buffer, the engine's diffuse
+point-light term, no shadow. Uncapped by `lightRows`; **ruling 26
+kept**: a spray's light is the cap's SUM spread over its rows (the first
+build lit fifteen coals at the gain each — an orange sheet). The
+analytic path for sprays is retired (main merges zero) with its cap and
+the rank-swap seam. **Found, fixed:** (1) a stage on an older push
+layout draws nothing — the vertex stage was on P10's block; the right
+and up read rows of the CSM matrix and every card vanished, and a
+mutation chain ran on that build before the picture was looked at
+(discarded; every mutation re-run); (2) a 272-byte push — a ninth vec4 —
+faults the device on every frame, said by the validation layer in one
+line; (3) **the harness hashed yesterday's frames**: with every render
+faulting, `capture` reported six pairs taken at their previous hashes,
+the PPMs being the old files, and only the pair with no earlier frame
+said "no output frame" — both `spray_gate.render` and `refs.render` now
+delete the target first; (4) the memory watchdog killed two background
+chains at a rebuild with 23 GB free a second later — the closing steps
+ran in the foreground in pieces; (5) G13 not re-claimed this beat: in
+one set the embers' traversal read 1.09 against 0.86 bare with every
+other pass 25% slower too — the GPU's clock following the frame's CPU
+load in Debug, which is what the "slow window" was; P10's idle set and
+its leaf mutation stand. Gates: G12 unmoved; G16/G17 on seven re-frozen
+pairs; G18 held; the bridge's `lightRows` gate (fifteen where four; the
+cap's sum; ids ascending). Mutations, four, all bitten on the fixed
+build: the traced visibility ignored (the shaded smoke MOVED); emission
+as albedo (the plate MOVED); the splat ignoring the normal (the
+underside an orange sheet — ruling 24's warm pool, for the last time);
+lights culled by screen position (behind == bare). The applet's copy no
+longer promises four lights.

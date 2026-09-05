@@ -61,8 +61,8 @@ Acceptance: G12–G18 green, each mutation-bitten; the plate captures re-frozen 
 
 | beat | what lands | gates | where |
 |---|---|---|---|
-| **P10 — the pass** | the graphics pass into the HDR composite; the CPU sort; depth test and `near` fade; `sprite` drawn here, `traced` named and off; the sub-bucket; the plate pairs re-frozen (embers, fade, smoke) | G12, G13, G14, G15, G18 | matryoshka |
-| **P11 — the light** | sun × CSM and the sky's ambient on the card; emission into the composite; the coals as emitting sprites; the light splat replacing the point lights; the coals rig re-frozen from above and beneath | G16, G17 | matryoshka |
+| **P10 — the pass** | the graphics pass into the HDR composite; the CPU sort; depth test and `near` fade; `sprite` drawn here, `traced` named and off; the sub-bucket; the plate pairs re-frozen (embers, fade, smoke) | G12, G13, G14, G15, G18 | matryoshka — *landed 2026-09-05, `5a3ed8e`* |
+| **P11 — the light** | sun × CSM and the sky's ambient on the card; emission into the composite; the coals as emitting sprites; the light splat replacing the point lights; the coals rig re-frozen from above and beneath | G16, G17 | matryoshka — *landed 2026-09-06, `263046f`: the sun's visibility is the TRACER's at the pixel (the CSM holds nothing in a traced scene), the ambient the hemisphere at the card's normal, the sun wrapped; the coals stay `light` rows (splats) rather than emitting sprites; ruling 26's sum spread over the rows; two new pairs, `behind` and `smoke-shade`* |
 | **P12 — the look** | `blend add` for sparks; `streak` along velocity in the vertex; the kind table's last two columns; the sparks rig on the plate | (extends G14) | matryoshka |
 | **close** | the whole set re-captured once — dust2's motes, oa_spirit3's sparks, the tiltyard — with the before/after in the report; the tracer's leaf gates kept, its captures retired | G12 whole | matryoshka |
 
