@@ -945,3 +945,51 @@ frame dithers; the accumulated frame is the picture" and ruling 2 took
 it — the frame a game shows is the single one. A gate on a still capture
 cannot see that; the judge's eye on a moving camera can, and did, on the
 first evening it could.
+
+**Campaign 3, P10 "the pass" — the composite's sprites (matryoshka
+`5a3ed8e`; nothing in spindrift's row).** A graphics pass between
+`post_composite` and `bloom_down`, INTO the HDR composite (the image
+gained the colour-attachment usage bit; it stays in GENERAL, which a
+colour attachment may be, so no layout moves — two barriers order the
+compute writes before the blend and the blend before bloom's sampled
+read). One instance per drawn row, a four-vertex strip, no vertex
+buffer: the vertex pulls the row from the particle SSBO through a sorted
+order SSBO; the fragment reads the tracer's R16F depth as a storage
+image (the gizmo overlay's test) and a sixteen-entry look table by the
+slot's `look.w`, which now carries the SPRAY's slot — the row's `kind`
+is the sim's and unset, so the plan's "per-kind table by the slot's
+kind" became per spray; a spray has one kind. Rejected: a per-row copy
+of `soft`/`near` (beat 7's stale-chunk lesson); the row's `kind` written
+by the bridge (a renderer index riding a sim field into every dump).
+**The sort is the bridge's**, on the CPU, per frame: every live `sprite`
+row's drawn position (`quantiseRow(drawnAt(…))`, the same floats the
+slot holds) to the eye, `std.sort.pdq` by distance descending, id
+ascending, spray ascending — a function of the rows (G14, G18); the keys
+and the order are bank-owned buffers sized to the particle buffer once.
+**`traced` is the leaf** (ruling 1): `Appearance` gains it, `upload`
+publishes runs only for it, `sortSprites` skips it; the refusal line
+names three. The four leaf gates of campaigns 1–2 (DIRTY chunks, the
+leaf split, the landed row's drawn position, the light appearance's
+relink) now run on `traced` — their claims are the tree's and unchanged;
+the beat-3 refusal-wording gate takes the third name. **`near`** rides
+the kind's three formats exactly as `soft` did (setter, spec, snapshot,
+rig token, pack field, verb); the rig-line byte gate bit again and took
+the token. **Stamps:** two more timestamp queries around the pass,
+written every frame drawn or not — an unwritten query fails the whole
+readback and perf goes dark — so `Perf: sprites` prints beside the trav
+split. **G12:** `refs.py verify test_scene` unmoved with the pass in the
+frame; every pair's bare hash unchanged at the freeze. **G13:** one set
+at the plate pose (Debug, the GPU shared with a second session all
+evening — absolute times 3× the afternoon's, the claim relative):
+traversal 3.29 ms bare, 3.29 with the embers and the coals stood down,
+3.55 with the coals' four analytic lights (P11 retires them); the pass
+0.07 ms for 2400 rows. **The five plate-family pairs re-frozen once**
+(7aa1ebc8, 6a32fbb4, f9311226, 4a193d9a, 482a9ee5); the embers are the
+leaf's picture disc for disc, the fade a fade, the smoke a plume — dark,
+unlit until P11. **Mutations, three:** the sort reversed (the fade pair MOVED, 4a193d9a → 7910b127); the leaf republished for `sprite` (traversal 5.50 ms against 3.29, coals off); the tie by slot instead of id — which SURVIVED the first G14 gate: within one spray the packing keeps a run's slot order equal to its id order, so every coincident burst draws the same either way, and a survived mutation names a decoration. It is not one: the rules differ ACROSS sprays, when a row of the second spray has a lower id than a tying row of the first. A gate built on exactly that (two sprays bursting a tick apart, the eye halfway between their rows so three distances are one dyadic number) bit the mutation — expected the second spray's slot, found the first's. Recorded: a tie rule that no picture on one spray can see is still a rule two sprays can. Suite 2563/2563.
+Process: the first `zig build test` chained behind the build in one
+background command was killed for memory (beat 7's lesson, again —
+now in the memory file); the Debug rebuild under the shared GPU took
+most of a ten-minute timeout and the harness backgrounded it; the
+pictures were read from disk while the chain ran, which is the right
+use of that time.
