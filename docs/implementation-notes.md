@@ -835,3 +835,44 @@ lands; count 0); the bounds dropped from the schema (1.5 lands; count
 73; `verify-dump` reads format 4 from Python. The engine half — the
 factor in the leaf's test, the third vec4 in the slot, the G8 block
 gates, the fade pair — is the next commit, in matryoshka.
+
+**Beat 6, the engine half — the factor in the leaf (matryoshka `af1666e`).**
+The row's alpha rides a THIRD vec4 in the particle slot (32 → 48 B; x =
+alpha, yzw reserved for the kind's `soft` and `streak` so campaign 2's
+later beats add no stride change); rejected: packing alpha into
+`colour.w` beside `kind` (a decode the next reader must know — loud,
+never a guess). The leaf's test: hit when the sample is below alpha × c,
+with c exactly beat 5's rule, spelled so that at alpha 1 a wide disc does
+NOT read the sample (`cover >= 0.5 && (alpha >= 1 || u < alpha)`) — the
+reflection pass's placeholder sample was never read before and must not
+start being, or the frozen pairs move. The reflection now passes the
+pixel's FIXED hashed sample (index 0) instead of 0: read only below
+alpha 1, and it does not walk with the sequence, so a faded sprite in a
+mirror dithers the same way every frame — recorded, trigger: a fading
+ember visible in a mirror under accumulation. **The alpha-1 witness
+held**: the three plate-family pairs bit-identical with the stride and
+the factor in place, in 0:43 by the one-ref runner — every other pair
+waits for the close (ruling 30). **The customer is a NEW pair**,
+`test_scene-fade`, rather than the plate pair re-frozen: the plate pose,
+the embers rig one line apart (`kernels/cinders-fade.rill`), so the
+unmoved plate pair is the witness and the fade pair is the picture, and
+the difference between them is the fade and nothing else (45 388 of
+921 600 pixels). Rejected: re-freezing the plate pair with a fade (then
+nothing on the lab witnesses alpha 1). Gates on the twin: the half block
+(1985 of 4096 at alpha 0.5, wide), the eighth (519 at alpha 0.5 ×
+coverage 0.25), alpha 1 = the old rule with u unread, alpha 0 never, a
+rim miss a miss at any alpha, accumulation mean 0.5000 with no pixel
+frozen. **Mutations, both bitten:** the twin ignoring alpha — both G8
+gates fail (4096 hits; mean 1.0000, 4096 frozen); the SHADER ignoring
+alpha — the fade pair's verify reports it MOVED to `379794ed…`, the
+plate pair's own hash, which is the cleanest witness this campaign has
+had that a change is one line. Process finding: a regex that appended
+the alpha argument to every `spriteHit` call landed two of them inside
+the nested `hashedSample(...)` — caught by reading the eight calls
+before building, not by the compiler (it would have been). A second: a
+`git checkout` meant to revert a mutation reverted the file's whole
+uncommitted edit with it; re-applied from the patch, byte-identical —
+mutate with a reversible replace, never with checkout, while the edit is
+uncommitted. Matryoshka's suite: 2560/2560; one build step fails on
+`src/control/commands.zig` importing `../physics_probe.zig` outside the
+control test root (Christian's `abe240e`, 2026-09-04), left as found.

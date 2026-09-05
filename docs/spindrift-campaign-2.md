@@ -2,7 +2,7 @@
 
 **Thesis.** The first campaign built the sim and the seam: a population that is right, replayable to the byte, and drawn. This campaign is what the eye sees. Its features are the appearance's — a fade, a soft edge, a glow, a streak — developed on test_scene (ruling 30), each with a gate on the lab's own pair and a capture from the plate, and the sim changes only where the picture needs a number the row does not carry. Sorting, order-independent transparency and a many-light pass stay on the far side of the fence; what crosses it is blending as a probability, which the leaf's coverage rule already is.
 
-Rulings in §7 are Christian's; everything else is proposed-and-seconded and proceeds unless overruled. Gates come first because that is what gets built. The first campaign's plan (`docs/spindrift-campaign.md`) stands; its rulings apply here unchanged.
+Rulings in §7 are Christian's; everything else is proposed-and-seconded and proceeds unless overruled. Gates come first because that is what gets built. **The five rulings of §7 ratified as proposed 2026-09-05**; P6 opened the same day. The first campaign's plan (`docs/spindrift-campaign.md`) stands; its rulings apply here unchanged.
 
 ---
 
@@ -72,7 +72,7 @@ test_scene only, by ruling 30: the plate seen from its +x side, the frozen pose 
 
 ---
 
-## 7. Rulings needed before P6
+## 7. Rulings needed before P6 — all five ratified as proposed, 2026-09-05 ("go on the proposals, you have the conn")
 
 1. **`alpha` on the row**, the kernel's, per row — or an appearance curve over age, the kind's? Proposed: the row's, by §3's rule; a curve on the kind would be a second curve mechanism beside `over`, and the kernel already writes size the same way.
 2. **Blending as stochastic transparency** — a probability in the leaf's hit test, converging under accumulation — against a sorted blend in a raster pass. Proposed: stochastic; the path tracer already accumulates, the rule is one factor on what shipped in beat 5, and sorting and OIT stay fenced.
