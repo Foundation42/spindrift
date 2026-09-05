@@ -979,8 +979,7 @@ written every frame drawn or not — an unwritten query fails the whole
 readback and perf goes dark — so `Perf: sprites` prints beside the trav
 split. **G12:** `refs.py verify test_scene` unmoved with the pass in the
 frame; every pair's bare hash unchanged at the freeze. **G13:** one set
-at the plate pose (Debug, the GPU shared with a second session all
-evening — absolute times 3× the afternoon's, the claim relative):
+at the plate pose (Debug; taken inside a half-hour when every pass ran 3× slow — I wrote "the GPU was shared with a second session", an inference WITHDRAWN: nothing was on the card at 23:20 and the bare pose was back to 2.79 ms; re-taken idle: traversal 1.09 bare, 1.06 embers with the coals off, 1.11 with the coals, 1.02 smoke; the pass 0.03–0.04 ms — never assert a cause that was not measured):
 traversal 3.29 ms bare, 3.29 with the embers and the coals stood down,
 3.55 with the coals' four analytic lights (P11 retires them); the pass
 0.07 ms for 2400 rows. **The five plate-family pairs re-frozen once**
@@ -993,3 +992,24 @@ now in the memory file); the Debug rebuild under the shared GPU took
 most of a ten-minute timeout and the harness backgrounded it; the
 pictures were read from disk while the chain ran, which is the right
 use of that time.
+
+**Blade3D recon (2026-09-05, `docs/recon/blade3d-particles.md`).** At
+Christian's ask, a sub-agent read his 2010 engine's particles. What
+carries over, and where it lands: the CLOUD's recipe — static puff
+cards on a depth ramp through a seeded box cluster, world-space 3D
+noise added so overlapping cards agree on the lumps, a per-card
+top/bottom gradient as fake self-shadow, a scrolling dust octave by
+`max`, a gamma lift — with the gradient replaced by P11's real sun and
+ambient on the card, and the noise volume (128³ luminance) as a new
+binding for the pass: a beat of its own, "the puff", after P12. The
+LIGHT SHAFTS (frustum cards shadow-mapped per fragment) once the pass
+is handed the sun's frustum: a fill with that trigger. TURBULENCE (three
+decorrelated Perlin taps, normalised) is a row word — a customer scene
+and a read-aloud before a kernel, and integer Perlin is its own recon.
+The EXPLOSION's Gaussian shock ring, likewise a word. PROMOTE-BY-AGE
+(one emitter, two appearances) is the fenced "sub-sprays" with a shape
+now: recorded. Not inherited: Blade3D's two-pass alpha-test crutch (no
+per-particle sort — ours sorts), its `abs()` soft-particle fade (ours is
+one-sided), its unlit cards (P11). A finding for the plan: a population
+whose kind changes by age spans two blend modes, so the pass must draw
+by kind after sorting — decide before P12's `blend add`.
