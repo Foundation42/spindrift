@@ -768,3 +768,33 @@ core, each with a gate and a bitten mutation. The middle — the bits every
 frozen capture depends on — is identical; the witness for that is the
 engine's capture verify against the frozen hashes, not this suite, and
 the P5 agent runs it before anything re-freezes.
+
+**Campaign close, 2026-09-05 — rulings 29–31 and the one-ref runner.**
+Christian's verdicts on beat 5's six questions, in conversation: the
+shadow budget is punted (the analytic lights are not for shadows; a
+MegaLights-shaped pass later, cheap screen-space particle light first),
+test_scene is the lab and the whole-set ref runs are not development,
+features next with blending among them, and the GPU evaluator delegated
+to CC — recorded as rulings 29–31 in the campaign's §7, with the four
+questions he did not rule taken as defaults there (verbs off the
+transcript, the rim as shipped, the rig tracked, no prim parent), each
+overruled by a word. The G7 decision: unfired; no lab scene has missed
+the budget and the picture's features buy nothing from a second
+evaluator; when it fires, a lowered instruction stream walked by a
+second CPU evaluator pays the bit-identity before any GPU does. **Built
+the same day**, matryoshka `9ee72fe`: `refs.py verify SCENE…` and
+`spray_gate.py verify|capture PAIR…`. The tool's own gates are its
+refusals — a name that picks nothing exits 1 listing the names, because
+a filter that silently ran nothing would print "held" over zero
+renders — and one real run of each: test_scene unmoved in one scene, the
+gate pair held in 0:01, the plate family in 0:10. **The first cut ran
+three renders for the gate pair's own name**: `test_scene-embers` is the
+prefix of the two plate pairs, and prefix-or-exact picked all three. Exact
+now wins over prefix; the family is still one word (`test_scene`). A
+partial `capture` keeps every other manifest line verbatim and says in
+its header which were re-taken — one pair's new picture never erases
+another's frozen truth. The second campaign's plan is
+`docs/spindrift-campaign-2.md`: the picture on the plate, G8–G11
+pre-registered (a fade as a probability in the leaf's hit test, the soft
+disc, the glow as emission, the streak as a capsule along velocity), the
+names read aloud, five rulings asked before P6.

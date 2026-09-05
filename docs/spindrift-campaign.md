@@ -208,14 +208,14 @@ v1 does not do:
 - per-row casts
 - collision against dynamic prims
 - mesh particles beyond prims
-- sorting / order-independent transparency beyond what the leaf gives
+- sorting / order-independent transparency beyond what the leaf gives — *at close (ruling 31) the fence on BLENDING is lifted: campaign 2 (`docs/spindrift-campaign-2.md`) takes it as stochastic transparency, the leaf's coverage rule with one more factor; sorting and OIT stay out*
 
 Deferred fills, each with a trigger:
 
 | fill | trigger |
 |---|---|
 | Morton broad phase for rows | first kernel that needs a neighbour |
-| GPU row evaluator (G7) | first customer scene where a kernel misses budget on the 9950X3D |
+| GPU row evaluator (G7) | first customer scene where a kernel misses budget on the 9950X3D — *at close (ruling 31, delegated to CC): unfired. No lab scene has missed the budget, and campaign 2's features are the appearance's, which a second evaluator buys nothing of. When it fires, its first beat is a second CPU evaluator over a lowered instruction stream of the row graph — bit-identity paid for without a GPU — and the GPU beat then walks the same stream* |
 | trails via loop-loft spines | first spray that wants a ribbon |
 | per-row casts | first scene where an aggregate deposit is visibly wrong |
 | dynamic-prim collision | Ironwood rain on the drawbridge |
@@ -259,6 +259,11 @@ Deferred fills, each with a trigger:
 26. *(beat 4 accepted)* **The light gain as the cap's sum**, one painted ember per spray, ratified on the plate capture. Christian is the judge of the picture; if his eye disagrees after 24's re-take, the calibration moves.
 27. *(beat 4 accepted, ratified as reported)* `stick` with one rule in the sweep; `refused`/`throttled` as two words; the highest-priority spray always runs; `sweep_ms`; `rankLights` with ties to the lower id; the hit point is the host's; write-verbs beat 1 with the interim deleted. Two practices to the ledger: byte-identical replay is dumps and transcript; a landing gate on one surface watches the arithmetic's luck — gate on two.
 28. *(beat 5, on the first build of 24)* **The resting offset moves from the sim to the appearance.** A stuck row's `pos` is the contact point (landing gates back to `y = 0` on floor and box); `stick` stores the contact normal on the row (`row.normal`, zero for unstuck rows); the upload draws the sprite and places the light at `pos + normal · size`, one rule for every row with no stuck branch. A landed row that shrinks stays on the surface by construction — gated: a row landed at 0.3 and shrunk to 0.06 is drawn 0.06 above the plate, not 0.3. `hear` still samples at the contact. No re-rest in the sweep. The plate re-take waits for this so the hashes freeze once.
+29. *(campaign close, 2026-09-05)* **The shadow budget: punted.** The analytic lights are not designed for shadows; the warm pool under the coals stands recorded as the trade — no blocker, no budget growth, none of beat 5's four ways built. Christian's direction for particle light: a MegaLights-shaped many-light pass later; for a first version, cheap screen-space particle lights and shadows are preferred over the analytic path (campaign 2, G10).
+30. *(campaign close, 2026-09-05)* **test_scene is the lab.** Development iterates on test_scene — cheap to load, cheap to gate. dust2 and the tiltyard stay as captures a close re-verifies, not scenes a beat develops on: dust2 loads for minutes, and the yard was never designed to be pretty. The whole-set `refs.py` and `spray_gate.py` runs are not development; they run when necessary, before a freeze or a release. One ref must be runnable alone — built the same day, matryoshka `9ee72fe`: `tools/refs.py verify SCENE…` (no `--really`: a named scene is the loop, the rail is for the set) and `tools/spray_gate.py verify|capture PAIR…` (a name, or a prefix for its family — `test_scene` picks the three plate pairs, `test_scene-embers` the gate pair alone in a second; a partial `capture` keeps every other line of the manifest and says so in its header; a name that picks nothing refuses and lists the names).
+31. *(campaign close, 2026-09-05)* **Features next, blending among them; the GPU is CC's call.** The next campaign is features on the lab, and "the blend mode stuff" is in it — the fence on blending (§6; ruling 25's "fenced blending stays fenced") is lifted, with the plate's embers as the customer. The GPU evaluator is delegated to CC; the decision is recorded in §6's G7 row (unfired; a lowered stream first when it fires). The plan is `docs/spindrift-campaign-2.md`, its gates pre-registered, its rulings asked in its §7.
+
+*Defaults taken at the close for beat 5's questions not ruled — proposed-and-seconded, each overruled by a word:* (2) authored tenant verbs (`spray add/delete/set`) stay off the transcript; trigger: a recorded session whose picture depends on a mid-session `spray set`. (3) the 46-pixel dust2 finding stays recorded with its trigger and the harness does not enforce "alone on the machine" — under ruling 30 dust2 is not rendered during development, which is where the load was. (4) the rim stays as shipped, the footprint switch; the pure rule is re-asked in campaign 2 where alpha enters the same test and must leave every alpha-1 pair unmoved. (5) `rigs/tiltyard.rig` stays tracked: a capture whose rig nobody has is a gate nobody can run. (6) no prim parent; the torch is its sparks; trigger: a scene that needs a body riding a body.
 
 ## 8. Ledger practices this campaign is likely to add
 
