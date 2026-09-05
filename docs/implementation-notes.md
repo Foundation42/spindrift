@@ -876,3 +876,50 @@ mutate with a reversible replace, never with checkout, while the edit is
 uncommitted. Matryoshka's suite: 2560/2560; one build step fails on
 `src/control/commands.zig` importing `../physics_probe.zig` outside the
 control test root (Christian's `abe240e`, 2026-09-04), left as found.
+
+**Beat 7 (campaign 2, P7 "the cloud") — the kind's `soft` edge
+(matryoshka `b4be987`; nothing changed in spindrift's row).** A soft rim
+is the KIND's, a fade the row's (campaign 2 §3's rule): `soft` is the
+fraction of a disc's radius over which its alpha falls from the row's to
+zero, in [0, 1], and it rides the archetype's three formats the way the
+appearance does — the rig line's token after the appearance (always
+written, absent reads 0), the Project pack's `soft` field (absent 0,
+outside [0, 1] a bad pack refused whole), `sprayarche soft <kind> <n>` on
+the console — one validation (`sprayArcheSetSoft`) shared by all three,
+refusing outside [0, 1] and never clamping. **A change from the plan:**
+P6 reserved the slot's `look.yzw` for the kind's numbers; built, they
+ride the RUN's leaf payload (`params.w`) instead of a per-row copy —
+the upload skips chunks the sim did not dirty, so a per-row copy of a
+kind number would go stale on still rows after a retune, and a rebuild
+per retune (the appearance's rule) is too heavy for a look number a
+designer slides. Rejected: marking every chunk dirty on a retune (a
+sim-side lie for a renderer's convenience). `SprayArcheSpec.soft` is
+optional (null leaves a retuned kind's edge as it was) because the
+console's `sprayarche set` carries no soft column; noted, not changed:
+the same `set` RESETS a kind's appearance to the default today (the
+spec's default is `sprite`), a pre-existing quirk — Christian's call
+whether `set` should leave the appearance alone too. The leaf: alpha ×
+clamp((1 − delta/radius)/soft, 0, 1), then beat 6's test unchanged; the
+twin restates it. Stated: a narrow disc takes the profile at the ray's
+offset, not integrated over the footprint — a soft mote is a little
+under-drawn; the cloud is wide. **Gates:** G9 on the twin (r = 30 px
+over a 64² block, point-tested: soft 1 gives 918 hits against the
+cone's integral 942.5, σ 21.7 — and the integral is a third of the
+disc's area, 942.7, a number a reader checks on paper; soft 0 every
+pixel inside; soft 0.5 the inner half solid; outside never); the rig
+round-trip carries 0.35, a `set` without a soft column keeps it, 1.5
+and −0.1 refused; the Project round-trip carries it; the rig-line byte
+gate BIT on the new token, as it should (the line's shape changed and
+the gate said so; the literal updated). **Mutations, both bitten:** the
+twin's profile at 2r (1876 hits, 43σ); the SHADER ignoring soft (the
+smoke pair MOVED to `64cb9ab4…`; reverted, holds at `ea0205d0…`). The
+witness: the four test_scene pairs bit-identical at soft 0 in 0:56. The
+customer: `test_scene-smoke`, a new pair at the plate pose — one kind,
+`smoke`, soft 0.7, `kernels/smoke.rill` (grey, non-emissive, growing
+from 25 cm to 1.2 m, rising at 0.35 m/s², fading) — a dithered grey
+column at one sample: a capture is FIXED sampling by design, so a soft
+rim shows as dither and converges to the profile only under the
+sequence; the smooth cloud is the accumulated frame, which no capture
+shows. Suite 2561/2561; the control-root compile failure stands as
+found. Process: the test fan-out was killed for memory when chained
+behind the build in one background command — run it alone, `-j4`.

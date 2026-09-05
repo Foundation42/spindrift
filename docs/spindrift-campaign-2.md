@@ -48,8 +48,8 @@ Acceptance for the campaign: G8–G11 green, each mutation-bitten, every campaig
 
 | beat | what lands | gate | where |
 |---|---|---|---|
-| **P6 — the fade** | `alpha` on the row, dump 4, the reader; the leaf's test with the factor; the fade kernel on the embers rig; the plate pair re-frozen once | G8 | spindrift, struple, matryoshka |
-| **P7 — the cloud** | `soft` on the kind, three formats; the profile in the test; a `smoke` kind on the plate | G9 | matryoshka |
+| **P6 — the fade** | `alpha` on the row, dump 4, the reader; the leaf's test with the factor; the fade kernel on the embers rig; the plate pair re-frozen once | G8 | spindrift, struple, matryoshka — *landed 2026-09-05: rill `48c0183`, spindrift `e5b83b8`, matryoshka `af1666e`; the customer is a NEW pair `test_scene-fade` beside the unmoved plate pair* |
+| **P7 — the cloud** | `soft` on the kind, three formats; the profile in the test; a `smoke` kind on the plate | G9 | matryoshka — *landed 2026-09-05, `b4be987`; the kind's number rides the run's leaf payload, not the slot* |
 | **P8 — the glow** | the read first; then the wiring if needed; the coals as emitting sprites beside the light rows; calibration for Christian's eye | G10 | matryoshka |
 | **P9 — the rain** | `streak` on the kind; the capsule test and its coverage; rain on the plate | G11 | matryoshka |
 
