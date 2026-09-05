@@ -80,12 +80,30 @@ lights the card.
 
 ## Found
 
-The GPU was shared during the evening's measurements (a second session
-on the machine): absolute frame times ran three times the afternoon's.
-Every G13 number above is from one set taken together, and the claim is
-the relative one. The Debug rebuild of matryoshka took most of ten
-minutes under that load; the harness moved the chain to the background
-and it finished.
+**The slow window, unexplained.** For about half an hour every GPU pass
+ran uniformly three times slower than the afternoon's (bare plate 10 ms
+against 3.3), across two separate chains. I first wrote "the GPU was
+shared with a second session" — an inference, withdrawn: at 23:20
+`nvidia-smi` showed nothing on the card but the desktop, and the bare
+pose measured 2.79 ms. A uniform slowdown of every pass reads like the
+card at low clocks between sparsely submitted frames (the SM clock is
+not pinned, as `refs.py` says on every run), but that was not measured
+either. What stands: the G13 set was re-taken with the GPU idle —
+traversal 1.09 ms bare, 1.06 with the embers and the coals stood down,
+1.11 with the coals, 1.02 with the smoke; the pass 0.03–0.04 ms — and
+the claim holds at full speed as it did at a third of it. The earlier
+Debug rebuild under that window took most of a ten-minute timeout; the
+harness backgrounded the chain and it finished.
+
+**Blade3D, surveyed** at Christian's ask (`docs/recon/blade3d-particles.md`):
+the cloud is static puff cards along a depth ramp inside a seeded box
+cluster, shaded by world-space 3D noise, a per-card top/bottom gradient
+and a scrolling dust octave; the light shafts are frustum cards
+shadow-mapped per pixel; the missile promotes fire to smoke by age; the
+explosion is a Gaussian shock ring; turbulence is three decorrelated
+Perlin taps. Blade3D had no per-particle sort, no velocity stretch and
+no lit particles — the three things this campaign has or is building.
+Where each lands is in the plan's fills and P11's scope.
 
 ## Next
 
