@@ -923,3 +923,25 @@ sequence; the smooth cloud is the accumulated frame, which no capture
 shows. Suite 2561/2561; the control-root compile failure stands as
 found. Process: the test fan-out was killed for memory when chained
 behind the build in one background command — run it alone, `-j4`.
+
+**Campaign 2 called, 2026-09-05, after P7.** Christian ran the fade and
+the smoke on his machine: a loss in quality and, on the Debug binary I
+had left in zig-out, a frame cost. Measured before answering (GPU ms at
+720p, Debug, 240 frames): bare plate 3.30, embers 4.35, fade 4.23,
+smoke soft 0.7 3.35, smoke hard 3.28; inside the plume: bare 3.87,
+smoke 4.11, hard 3.99, embers 5.90 — the fade costs nothing over the
+opaque embers and the soft edge a tenth of a millisecond, so the cost was
+the build, not the features. The quality is the design: one hashed
+sample per pixel, noise unless a still camera accumulates, and games
+move the camera — "a cloud of bees". His verdict (campaign 2 §7 ruling
+6, his words): ray-tracing particles does not cut it; tons of work for
+poor results; the motes, the smoke, the lights and shadows were each a
+problem made to keep everything uniform, which most games do not need;
+a screen-space composite is fine, if not better, for most things. The
+sim side stands whole; the leaf's stochastic path and the particle
+point lights go; a raster sprite pass over the traced frame replaces
+them, planned fresh. Lesson for the ledger: the plan's G8 said "a single
+frame dithers; the accumulated frame is the picture" and ruling 2 took
+it — the frame a game shows is the single one. A gate on a still capture
+cannot see that; the judge's eye on a moving camera can, and did, on the
+first evening it could.
