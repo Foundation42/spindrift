@@ -2,7 +2,7 @@
 
 **Thesis.** Campaign 2 called the ray-traced sprite (its §7 ruling 6): one hashed sample per pixel is noise under a moving camera, the motes and the smoke each needed a rule of their own, the lights hit a budget built for lamps, and the tracer paid one to two milliseconds of traversal for it at 720p — GPU budget Christian would rather spend on screen-space effects. This campaign draws the same rows as **sorted billboards in a raster pass over the traced frame, aware of its G-buffer**: depth-tested and softly faded against the tracer's eye-distance depth, lit by the sun through the CSM and by the sky through the per-pixel ambient, written into the HDR composite before bloom so emission glows for free, and — for the rows that are lights — splatted onto the G-buffer as deferred lights with no cap. The sim does not change. The tracer stops seeing particles, and the leaf stays behind an appearance name for the customer who one day wants a sprite in a mirror.
 
-Rulings in §7 are Christian's; everything else is proposed-and-seconded and proceeds unless overruled. Gates come first because that is what gets built. Campaigns 1 and 2 stand (`docs/spindrift-campaign.md`, `docs/spindrift-campaign-2.md`); their rulings apply here unchanged, ruling 30 above all: test_scene is the lab, one pair per beat, the whole set once at the close.
+Rulings in §7 are Christian's; everything else is proposed-and-seconded and proceeds unless overruled. Gates come first because that is what gets built. **The six rulings of §7 ratified as proposed 2026-09-05**; P10 opened the same evening. Campaigns 1 and 2 stand (`docs/spindrift-campaign.md`, `docs/spindrift-campaign-2.md`); their rulings apply here unchanged, ruling 30 above all: test_scene is the lab, one pair per beat, the whole set once at the close.
 
 ---
 
@@ -76,7 +76,7 @@ test_scene only until the close (ruling 30): the embers on the plate (P10, the h
 
 ---
 
-## 7. Rulings needed before P10
+## 7. Rulings needed before P10 — all six ratified as proposed, 2026-09-05 ("I like the sound of this. agreed. let's go")
 
 1. **`sprite` is the raster composite; `traced` keeps the leaf, off by default.** Proposed so a rig from campaign 1 means the new picture with no edit, and the leaf's code and twin gates stay for a customer. The alternative is deleting the leaf; Christian said "we can return to it", so kept.
 2. **The pass sits before bloom, into the HDR composite.** Proposed: sprites bloom and tonemap as scene, and emission needs no second path. The alternative, over the final image like the gizmos, would need its own tonemap and would never glow.
