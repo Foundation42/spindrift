@@ -8,8 +8,11 @@ the world plane. Piped into a plane program, it refuses at mount by name.
 
 A kernel is a rill program whose plane is the row (`rill-spec.md` §3.16).
 Row fields are `row.pos`, `row.vel`, `row.age`, `row.life`, `row.seed`,
-`row.size`, `row.colour`, `row.kind`, `row.stuck` and `row.normal` (the
-contact, once `stick` landed the row; zero otherwise), `row.u0`–`row.u3`;
+`row.size`, `row.colour`, `row.kind`, `row.stuck`, `row.normal` (the
+contact, once `stick` landed the row; zero otherwise), `row.alpha` (the
+row's opacity in [0, 1], born 1 — the appearance's hit test takes it as a
+factor on the disc's coverage; a landed value outside [0, 1] is refused
+on the write node and lands nothing, beat 6), `row.u0`–`row.u3`;
 the spray's knobs
 are `plane.drift.@self.<knob>`, broadcast to every row.
 

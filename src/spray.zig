@@ -652,6 +652,7 @@ pub const Spray = struct {
             p.life_ns[id] = self.knobs.life_ns;
             p.size[id] = fixed.ONE;
             p.colour[0][id] = fixed.ONE;
+            p.alpha[id] = fixed.ONE; // opaque until a kernel fades it (beat 6)
             inline for (0..3) |a| p.pos[a][id] = self.pos[a];
             stats.spawned += 1;
         }

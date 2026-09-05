@@ -51,6 +51,14 @@ pub const schema = [_]rill.row.Field{
     // row that shrinks stays on the surface by construction. `hear` samples
     // at `pos`, the contact.
     .{ .name = "normal", .kind = .vec3 },
+    // The row's opacity in [0, 1], born 1 (beat 6, campaign 2 G8). The
+    // appearance's hit test takes it as a factor on the disc's coverage —
+    // a fade is `row.age | over row.life [1, 1, 0] | write row.alpha`. The
+    // bounds are the FIELD's (rill 48c0183): a landed value outside them
+    // is refused on the write node, counted, and lands nothing — a kernel
+    // that says 1.2 has a curve wrong, and a clamp would hide it while the
+    // picture looked right (campaign 2, ruling 3).
+    .{ .name = "alpha", .kind = .scalar, .bounds = .{ 0, fixed.ONE } },
     .{ .name = "u0", .kind = .scalar },
     .{ .name = "u1", .kind = .scalar },
     .{ .name = "u2", .kind = .scalar },
@@ -67,7 +75,8 @@ pub const F_COLOUR: u16 = 6;
 pub const F_KIND: u16 = 7;
 pub const F_STUCK: u16 = 8;
 pub const F_NORMAL: u16 = 9;
-pub const F_U0: u16 = 10;
+pub const F_ALPHA: u16 = 10;
+pub const F_U0: u16 = 11;
 
 pub const Population = struct {
     gpa: std.mem.Allocator,
@@ -94,6 +103,9 @@ pub const Population = struct {
     stuck: []u8,
     /// The contact normal (`row.normal`), stored by `stick`; zero otherwise.
     normal: [3][]Fixed,
+    /// The row's opacity (`row.alpha`), Q16.16 in [0, 1]; born 1 by the
+    /// spray's spawn, faded by a kernel.
+    alpha: []Fixed,
     /// User channels, `USER_CHANNELS` per row, contiguous per row so a
     /// kernel's per-row state is one slice — the one field that is not
     /// field-major, for exactly that reason.
@@ -132,6 +144,8 @@ pub const Population = struct {
         errdefer gpa.free(p.kind);
         p.stuck = try gpa.alloc(u8, capacity);
         errdefer gpa.free(p.stuck);
+        p.alpha = try gpa.alloc(Fixed, capacity);
+        errdefer gpa.free(p.alpha);
         p.user = try gpa.alloc(Fixed, capacity * USER_CHANNELS);
         errdefer gpa.free(p.user);
         p.free = try gpa.alloc(u32, capacity);
@@ -161,6 +175,7 @@ pub const Population = struct {
         gpa.free(self.size);
         gpa.free(self.kind);
         gpa.free(self.stuck);
+        gpa.free(self.alpha);
         gpa.free(self.user);
         gpa.free(self.free);
         inline for (0..3) |a| {
@@ -184,6 +199,7 @@ pub const Population = struct {
             self.size[id] = 0;
             self.kind[id] = 0;
             self.stuck[id] = 0;
+            self.alpha[id] = 0;
             self.doomed[id] = false;
             inline for (0..3) |a| {
                 self.pos[a][id] = 0;
@@ -199,6 +215,7 @@ pub const Population = struct {
             @memset(self.size, 0);
             @memset(self.kind, 0);
             @memset(self.stuck, 0);
+            @memset(self.alpha, 0);
             @memset(self.doomed, false);
             inline for (0..3) |a| {
                 @memset(self.pos[a], 0);
@@ -276,6 +293,7 @@ pub const Population = struct {
             F_KIND => .{ .scalar = fixed.fromInt(self.kind[r]) },
             F_STUCK => .{ .scalar = fixed.fromInt(self.stuck[r]) },
             F_NORMAL => .{ .vec3 = .{ self.normal[0][r], self.normal[1][r], self.normal[2][r] } },
+            F_ALPHA => .{ .scalar = self.alpha[r] },
             else => .{ .scalar = self.userOf(r)[field - F_U0] },
         };
     }
@@ -300,6 +318,11 @@ pub const Population = struct {
             },
             F_NORMAL => if (val == .vec3) {
                 inline for (0..3) |a| self.normal[a][r] = val.vec3[a];
+            },
+            // Inside [0, 1] by the field's bounds: the runtime refused
+            // anything else before it reached here.
+            F_ALPHA => if (val == .scalar) {
+                self.alpha[r] = val.scalar;
             },
             F_AGE, F_LIFE, F_SEED, F_KIND => {}, // refused at mount; never reached
             else => if (val == .scalar) {

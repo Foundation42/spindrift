@@ -798,3 +798,40 @@ another's frozen truth. The second campaign's plan is
 pre-registered (a fade as a probability in the leaf's hit test, the soft
 disc, the glow as emission, the streak as a capsule along velocity), the
 names read aloud, five rulings asked before P6.
+
+**Beat 6 (campaign 2, P6 "the fade"), the spindrift half — `alpha` on the
+row, and the field's bounds in rill.** Christian gave the conn on the
+five proposals of campaign 2 §7 (2026-09-05): alpha is the row's, blending
+is a probability, a write outside [0, 1] is refused and counted, the glow
+is emission into the existing bloom, the names stand. `alpha` is `F_ALPHA`
+= 10 (`F_U0` moves to 11 — every user of it is by name), Q16.16, born 1 in
+the spray's spawn beside size and colour (the population's own `spawn`
+zeroes it like every field: the store has no opinion, the spray does),
+dump format 4 with `alpha` as the last key, `tools/read_dump.py` reading
+it back and refusing a value outside [0, 1] on the Python side too.
+**The bounds are the field's, in rill (`48c0183`):** `Field.bounds`, a
+closed range checked on the value that would LAND — after `add` composes
+with the snapshot, after an axis composes with its vector — with the
+refusal on the `write` node that made it, counted like a refusal at eval,
+its words the value and the range as decimals by integer formatting. A
+queued write now remembers its node for exactly that. Rejected: counting
+a refused write in the population's thunk (no node, no words — a refusal
+that lands nowhere); clamping (ruling 3: a kernel that says 1.2 has a
+curve wrong, and a clamp would hide it while the picture looked right).
+Gates: rill's (replace outside above and below, inside, the inclusive
+top by `add`, `add` past it refused with 0.75 kept; first_node the write;
+the words `row.alpha = 2.0000 is outside [0.0000, 1.0000]`); here, the
+dump gate extended to format 4 with alpha's VALUE; `alpha: born 1, faded
+by over, a landed value past 1 refused on the write node, counted, the
+row unchanged` (the same row's other write lands); `G0 with a fade` —
+two runs one byte string, and the alpha column carries values strictly
+between 0 and 1. **Mutations, four, all bitten:** rill's check on the
+queued operand instead of the landed value (the add past the top lands;
+count 0); the spawn leaving alpha 0 — the fade kernel HID it, its first
+tick writing the first knot, and the second spray caught it (0 + 0.5
+lands; count 0); the bounds dropped from the schema (1.5 lands; count
+0); alpha written as zero into the dump (the dump gate reads 0 for
+32768, and G0-with-a-fade finds nothing between 0 and 1). The suite is
+73; `verify-dump` reads format 4 from Python. The engine half — the
+factor in the leaf's test, the third vec4 in the slot, the G8 block
+gates, the fade pair — is the next commit, in matryoshka.

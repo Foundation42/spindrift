@@ -1366,7 +1366,7 @@ test "staleness is carry-overs since the spray last ran: the occurrence carries 
     try testing.expectEqual([3]i64{ 1, 2, 1 }, seen);
 }
 
-test "dump: `stuck` and `normal` ride, format 3" {
+test "dump: `stuck`, `normal` and `alpha` ride, format 4" {
     const gpa = testing.allocator;
     var p = try spindrift.Population.init(gpa, 2);
     defer p.deinit();
@@ -1374,11 +1374,12 @@ test "dump: `stuck` and `normal` ride, format 3" {
     _ = p.spawn().?; // a second, unstuck row — the dump carries LIVE rows only
     p.stuck[0] = 1;
     p.normal[1][0] = fixed.ONE;
+    p.alpha[0] = fixed.HALF;
     const bytes = try dump.write(gpa, &p, 0);
     defer gpa.free(bytes);
     const s = try dump.readSummary(gpa, bytes);
     defer gpa.free(s.ids);
-    try testing.expectEqual(@as(i64, 3), s.fmt);
+    try testing.expectEqual(@as(i64, 4), s.fmt);
     // The VALUES, not the keys: a dump writing zero for `normal` kept the
     // key and survived a substring check.
     const stuck = try dump.column(gpa, bytes, "stuck");
@@ -1388,6 +1389,73 @@ test "dump: `stuck` and `normal` ride, format 3" {
     try testing.expectEqual(@as(i64, 1), stuck[0]);
     try testing.expectEqual(@as(i64, fixed.ONE), nrm_y[0]);
     try testing.expectEqual(@as(i64, 0), nrm_y[1]);
+    // Beat 6: `alpha` rides as a value (a dump writing zero for it would keep
+    // the key).
+    const alpha = try dump.column(gpa, bytes, "alpha");
+    defer gpa.free(alpha);
+    try testing.expectEqual(@as(i64, fixed.HALF), alpha[0]);
+    try testing.expectEqual(@as(i64, 0), alpha[1]);
+}
+
+// ---------------------------------------------------------------------------
+// Beat 6 (campaign 2, G8's row half): `alpha` on the row — born opaque,
+// faded by `over`, bounded by the field.
+// ---------------------------------------------------------------------------
+
+test "alpha: born 1, faded by `over`, and a landed value past 1 is refused on the write node, counted, the row unchanged" {
+    // Mutations: the spawn leaving alpha 0 — the fade kernel hides it (its
+    // first tick writes the first knot, 1), and the SECOND spray catches it:
+    // 0 + 0.5 lands and the refusal count reads 0; the bounds dropped from
+    // the schema (1.5 lands, and the count reads 0 again).
+    const gpa = testing.allocator;
+    const b = try Bench.init(gpa, 4, 1);
+    defer b.deinit(gpa);
+    b.spray.knobs = .{ .rate = fixed.fromInt(1), .life_ns = 4 * std.time.ns_per_s };
+    try b.mount("row.age | over row.life [1, 1, 0] | write row.alpha\n");
+    try b.tick(0, 0);
+    try b.tick(1, std.time.ns_per_s); // born: age 0 → the first knot, 1
+    b.spray.knobs.rate = 0;
+    try testing.expectEqual(fixed.ONE, b.spray.pop.alpha[0]);
+    try b.tick(2, 2 * std.time.ns_per_s); // t = 0.25 → still 1
+    try b.tick(3, 3 * std.time.ns_per_s); // t = 0.5 → the middle knot, 1
+    try testing.expectEqual(fixed.ONE, b.spray.pop.alpha[0]);
+    try b.tick(4, 4 * std.time.ns_per_s); // t = 0.75 → halfway down, 0.5
+    try testing.expectEqual(fixed.HALF, b.spray.pop.alpha[0]);
+    try testing.expectEqual(@as(u32, 0), b.spray.last.refusals);
+
+    // A second spray, born opaque: 1 + 0.5 lands nothing and says so; the
+    // same row's other write lands.
+    const c = try Bench.init(gpa, 4, 1);
+    defer c.deinit(gpa);
+    try c.mount(
+        \\0.5 | write row.alpha add
+        \\row.size | mul 2 | write row.size
+    );
+    try oneRow(c);
+    try testing.expectEqual(@as(u32, 1), c.spray.last.refusals);
+    try testing.expect(std.mem.indexOf(u8, c.spray.last_refusal.text(), "row.alpha = 1.5000 is outside [0.0000, 1.0000]") != null);
+    try testing.expectEqual(fixed.ONE, c.spray.pop.alpha[0]);
+    try testing.expectEqual(2 * fixed.ONE, c.spray.pop.size[0]);
+}
+
+test "G0 with a fade: same script, same bytes — and `alpha` rode the dump, between 0 and 1" {
+    // Mutation: `alpha` left out of the dump (the column is missing), or the
+    // kernel's write never reaching the row (no value between 0 and 1).
+    const gpa = testing.allocator;
+    const s = Script{ .kernel = "spawn\ngravity plane.drift.@self.gravity\nrow.age | over row.life [1, 1, 0] | write row.alpha\nperish\n" };
+    const a = try run(gpa, s, null);
+    defer gpa.free(a);
+    const b = try run(gpa, s, null);
+    defer gpa.free(b);
+    try testing.expectEqualSlices(u8, a, b);
+    const alpha = try dump.column(gpa, a, "alpha");
+    defer gpa.free(alpha);
+    var between: u32 = 0;
+    for (alpha) |v| {
+        try testing.expect(v >= 0 and v <= fixed.ONE);
+        if (v > 0 and v < fixed.ONE) between += 1;
+    }
+    try testing.expect(between > 0);
 }
 
 test "normal: zero on every unstuck row, and zero again on a reused slot" {

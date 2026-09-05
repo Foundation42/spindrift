@@ -24,6 +24,7 @@ ARRAYS = [
     "ids", "gen", "pos_x", "pos_y", "pos_z", "vel_x", "vel_y", "vel_z",
     "age", "life", "seed", "size", "col_l", "col_a", "col_b", "kind",
     "u0", "u1", "u2", "u3", "stuck", "nrm_x", "nrm_y", "nrm_z",
+    "alpha",
 ]
 SCALARS = ["fmt", "tick", "capacity", "live"]
 
@@ -44,8 +45,8 @@ def main(path):
     for k in SCALARS:
         if k not in m or not isinstance(m[k], int):
             fail(f"scalar {k!r} missing or not an int")
-    if m["fmt"] != 3:
-        fail(f"fmt {m['fmt']} is not 3")
+    if m["fmt"] != 4:
+        fail(f"fmt {m['fmt']} is not 4")
     live = m["live"]
     for k in ARRAYS:
         if k not in m or not isinstance(m[k], list):
@@ -59,6 +60,10 @@ def main(path):
         fail("ids are not ascending and unique")
     if any(i >= m["capacity"] for i in ids):
         fail("an id is past capacity")
+    # alpha is the row's opacity in [0, 1] (Q16.16): the field's bounds hold
+    # on the writer's side, so a value outside is a writer bug, not a row.
+    if any(v < 0 or v > 65536 for v in m["alpha"]):
+        fail("an alpha is outside [0, 1]")
     extra = set(m) - set(SCALARS) - set(ARRAYS)
     if extra:
         fail(f"unexpected keys {sorted(extra)}")
