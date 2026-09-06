@@ -1084,3 +1084,39 @@ The true fix is recorded with its trigger: a sun depth pass over the
 traced geometry (the shadow_depth pipeline over the scene's triangles,
 not only the raster producer's meshes), so a card's own world position
 answers; trigger: a card whose area should be half in shadow.
+
+**Campaign 3, P12 "the look" (matryoshka `1d6f223`; nothing in
+spindrift's row) — and Christian's leak closed.** One visibility per
+CARD: the vertex stage reads the tracer's sun visibility under the
+card's centre pixel (the depth there first — sky is lit) and carries it
+flat; the fragment multiplies it with the CSM at its own position. A
+card is lit or shadowed whole; the shaded-smoke pair moved when the
+per-fragment read was put back. Rejected: blurring the per-fragment
+read (a soft version of the surface's shadow is still the surface's).
+The true fix stands recorded — a sun depth pass over the traced
+geometry. **`blend`** (0 alpha, 1 add) and **`streak`** (seconds of
+travel) ride the kind's three formats as `soft` and `near` do — the rig
+line is `… <appearance> <soft> <near> <streak> <blend>`, the pack has
+`streak` and `blend` (a string), the console `sprayarche streak|blend`;
+the rig-line byte gate took the two tokens. **Runs by blend:** the sort
+key carries the blend; after the sort the order is cut into runs where
+the mode changes (`SpriteRun {first, count, blend}`, the last run taking
+overflow past 256); the renderer draws the runs in order, binding the
+pipeline each asks for — a second sprite pipeline with the splats'
+ONE/ONE blend and the same shaders, the fragment premultiplying when the
+look says add. Rejected: all alpha then all additive (a spark behind
+smoke drawn over it). Gate: an additive spray between two alpha depths
+makes three runs in order, one mode one; mutation: the cut by spray —
+three runs for one. **The streak:** the slot gains `vel` (64 B); the
+vertex turns the card's first axis along the velocity projected onto the
+card's plane and stretches it by streak × speed — an ellipse, the
+fragment's disc test unchanged, the soft edge intact (a capsule with
+round ends is a fill); mutation: the axis from the position — the sparks
+moved. The fed dt is kept by the bank (`lastDt`; a bit for "have a
+previous tick", since the epoch is at time zero — the first cut compared
+against zero and read no dt) and reaches the push, unused this beat: the
+streak is per second so a dash does not change with the frame rate.
+**Found:** the bank already had a local `runs` — the accessor is
+`spriteRuns`. Eight pairs frozen and held (G18); four mutations bitten;
+suite 2566/2566. The sparks pair is oa_spirit3's kernel as an additive,
+streaked kind beside the coals on the plate.
