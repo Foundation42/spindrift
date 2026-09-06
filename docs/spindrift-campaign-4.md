@@ -2,7 +2,7 @@
 
 **Thesis.** Campaign 3 draws the rows as lit, sorted, blended cards over the traced frame. A plume of them still reads as a stack of discs up close. Christian's 2010 engine had a cloud that did not (`docs/recon/blade3d-particles.md` §3), and its recipe is eight shader lines: a 3D noise field sampled in WORLD space and added to every card, so overlapping cards agree on where the lumps are; a second, finer octave scrolling with time and combined by `max`, so wisps move without washing out; a per-card top/bottom gradient — which campaign 3 already made real as the sun and the sky on a hemisphere normal; and a gamma lift. This campaign puts that field on the composite's card as the kind's numbers, with the plate's smoke as the customer, and takes the light shafts as its second beat if the pass can be handed the sun's frustum.
 
-Rulings in §6 are Christian's; everything else is proposed-and-seconded and proceeds unless overruled. Gates come first because that is what gets built. Campaigns 1–3 stand; ruling 30 above all: test_scene is the lab.
+Rulings in §6 are Christian's; everything else is proposed-and-seconded and proceeds unless overruled. Gates come first because that is what gets built. Campaigns 1–3 stand; ruling 30 above all: test_scene is the lab. **CLOSED 2026-09-06 after P13** (`docs/cc-report-campaign4-close.md`): the puff holds; the whole set not re-run at Christian's word, checked by eye; the shafts wait for the sun's frustum.
 
 ---
 

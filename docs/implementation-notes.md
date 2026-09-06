@@ -1173,3 +1173,10 @@ root — the suite's count did not move — so it is its own root now
 standalone files; the first regex that copied the block stopped at the
 run/dependOn lines and the gate was hooked in a second pass. Suite
 2567/2567; nine pairs held.
+
+**Campaign 4 CLOSED, 2026-09-06, after P13** (`docs/cc-report-campaign4-close.md`).
+At Christian's word the whole set was not re-run: he checked the
+pictures by eye, the context was short, and G21 had already held the
+eight campaign-3 pairs byte-identical at the puff's zero — the honest
+statement is that ruling 30's whole run belongs to the next close, and
+that is said in the report rather than implied. "We have puffs."
