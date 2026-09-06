@@ -1120,3 +1120,24 @@ streak is per second so a dash does not change with the frame rate.
 `spriteRuns`. Eight pairs frozen and held (G18); four mutations bitten;
 suite 2566/2566. The sparks pair is oa_spirit3's kernel as an additive,
 streaked kind beside the coals on the plate.
+
+**Campaign 3 CLOSED, 2026-09-06** (`docs/cc-report-campaign3-close.md`;
+matryoshka `202dc51` the manifest). Ruling 30's one whole run:
+`refs.py verify --really` — nine scenes unmoved with both pipelines in
+every frame (G12 whole), timings within band; then the four pairs that
+were the leaf's re-taken as the composite's (oa_spirit3's sparks
+9ac6cb99 → a8b721a0, dust2's motes c49d3756 → c4d0885d, the torch
+81304695 → c9c3042d, the fountain 33041ea4 → 26ad3c5a), their old frames
+kept beside the new for the report — the harness now deletes a target
+before rendering, so the before had to be copied out first. **Two bares
+moved** (oa ad404c38 → 69a74dc1, dust2 6168e525 → 846948cb), the
+tiltyard's two not: the pairs' bares were frozen on the 2nd, and the
+engine's own history re-froze dust2's reference after the importers'
+BC7 alpha fix (`e87d898`, the 5th) and put a floor decal into the q3
+after-frame that the before-frame lacks. The nine references at their
+own poses are the witness that the pass moves nothing; the two bares
+are re-frozen with their pairs and said. The pictures: dust2's motes are
+the same scatter as cards; the sparks the same burst, lit. Eleven
+mutations across the campaign, all bitten or the gate rewritten. The
+leaf's gates stay in the suite on `traced`; no mounted capture uses
+`traced`, so nothing to retire. Next: "the puff", its own campaign.
