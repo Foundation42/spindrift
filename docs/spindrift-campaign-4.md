@@ -43,7 +43,7 @@ Acceptance: G19–G21 green and bitten, the puff pair frozen from the plate; the
 
 | beat | what lands | gates | where |
 |---|---|---|---|
-| **P13 — the field** | the volume generated and bound (a `sampler3D`, repeat, linear); `puff` on the kind in three formats; the fragment's noise, dust and lift; the puff pair from the plate | G19, G20, G21 | matryoshka |
+| **P13 — the field** | the volume generated and bound (a `sampler3D`, repeat, linear); `puff` on the kind in three formats; the fragment's noise, dust and lift; the puff pair from the plate | G19, G20, G21 | matryoshka — *landed 2026-09-06, `8d5310b`, under the proposals; `noise`/`dust` are metres per PERIOD (eight lumps to one)* |
 | **P14 — the shafts** (if the pass is handed the sun's frustum) | frustum-aligned cards through the sun's visibility; the beam over the plate | (its own gate) | matryoshka |
 | **close** | the whole set once | G21 whole | matryoshka |
 
@@ -55,7 +55,7 @@ test_scene, the plate pose: the smoke kind with the puff — `test_scene-puff` b
 
 ---
 
-## 6. Rulings needed before P13
+## 6. Rulings needed before P13 — proceeded under as proposed on Christian's "rock on" (2026-09-06); each stands asked
 
 1. **The puff is the kind's, five numbers under one verb** (`sprayarche puff`), rather than five verbs. Proposed for the rig line and the read-aloud.
 2. **The noise modulates albedo and alpha both** (shading and silhouette), the dust by `max`, the lift on the albedo before the light. Proposed as the recon's recipe with the lighting kept real.

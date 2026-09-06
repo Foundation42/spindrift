@@ -1141,3 +1141,35 @@ the same scatter as cards; the sparks the same burst, lit. Eleven
 mutations across the campaign, all bitten or the gate rewritten. The
 leaf's gates stay in the suite on `traced`; no mounted capture uses
 `traced`, so nothing to retire. Next: "the puff", its own campaign.
+
+**Campaign 4, P13 "the field" (matryoshka `8d5310b`; nothing in
+spindrift's row).** The puff: a tiling 3D field generated on the CPU
+(`src/puff_noise.zig`: Perlin over an 8-cell lattice with gradients
+hashed by lowbias32 and wrapped at the edge, two octaves, 128³ RGBA8 —
+the LUT path takes RGBA8 — wyhash frozen `df721bbc20454ed7`), up
+`createLut3D` with its own REPEAT sampler (the LUT's clamps), bound at 10
+on the sprite set; `puff_view` exempted from the renderer's X-ray table
+by name, as the LUT is. The fragment samples at the world position over
+`noise` metres per period; albedo × mix(1, 2n, grain); alpha ×
+mix(1, smoothstep(0.35, 0.65, n), grain) — the first cut scaled alpha by
+n itself and halved the plume; dust: a second sample at (world − (0,
+drift × fed_time, 0)) / dust, albedo = max(albedo, d/2); lift:
+pow(albedo, lift). Fed time reaches the push in `hemi_sky.w` (the bank's
+`lastTime`). `sprayarche puff` — five numbers, one verb, one validation,
+one rig token group after the blend, five pack fields; the look table is
+three vec4s per spray (the shaders index `looks[spray × 3 + k]`). The
+rig's numbers: a 2.5 m period made 30 cm grain (eight lumps to a period)
+— 16 m now, dust 4 m. **Gates:** G19 (frozen hash; tiles — the perlin
+one period on equals the perlin at 0 on every axis; not flat), G20, G21
+(eight pairs byte-identical after the field was bound and the look
+table grew — the stride change alone could have moved them), the rig
+and Project round-trips, the rig-line byte gate. **Mutations, three,
+all bitten:** the noise in the card's frame (the puff pair MOVED); the
+wisps on the wall clock (two renders, TWO hashes — the claim itself);
+the field applied at grain 0 (the smoke pair MOVED). **Found:** the
+generator's test was reachable from the renderer but not from a test
+root — the suite's count did not move — so it is its own root now
+(build.zig's `puff_noise_tests`), the same shape as the engine's other
+standalone files; the first regex that copied the block stopped at the
+run/dependOn lines and the gate was hooked in a second pass. Suite
+2567/2567; nine pairs held.
