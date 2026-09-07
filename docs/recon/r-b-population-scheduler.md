@@ -75,6 +75,14 @@ one is a single job and runs inline on the caller (`schedule` falls back
 to executing when nothing is queued, `jobs.zig:443`). Not measured; P0
 makes it a knob-shaped constant so the first customer scene can move it.
 
+> **Moved, 2026-09-08.** The scene came: fireflies, 2482 rows, thirty
+> workers — 2.4 chunks, a tenth of the machine, and the reason the engine's
+> tick was slower than drift-run's single thread. The cache reasoning above
+> is sound and was only ever half the story: the chunk is also the work
+> division. It is `clamp(capacity / TARGET_CHUNKS, MIN_CHUNK, DEFAULT_CHUNK)`
+> at init now — 32 rows at the playground's capacity, measured. The ledger
+> has the numbers and the bug that came with it.
+
 **Determinism under chunking** holds only for the phase that is
 row-local. The tick is three phases and only the middle one is parallel:
 
@@ -202,7 +210,7 @@ governor and the priority order are P4.
    from a rill is a duration. P0 stores ticks and converts at spawn from
    the knob's ms by the fixed dt. Lean: ticks in the row, duration on the
    knob, conversion at spawn — a row never carries a unit.
-4. **Chunk size 1024** (§3) — a constant until a scene moves it.
+4. **Chunk size 1024** (§3) — a constant until a scene moves it. *(Moved 2026-09-08: derived from capacity at init. See §3.)*
 
 ## 9. Where this leaves P0
 

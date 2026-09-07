@@ -486,9 +486,18 @@ pub fn main() !u8 {
         }
         const last = t == o.ticks;
         if ((o.every > 0 and t % o.every == 0) or last) {
-            std.debug.print("tick {d:>6}  t={d}ms  live {d:>6}  +{d} -{d}{s}  steps {d}\n", .{
+            var gb: [40]u8 = undefined;
+            var cb: [24]u8 = undefined;
+            // The neighbourhood grid, when there is one: its cell is derived
+            // from the live bounds now, so a run that is slow should be able
+            // to say what it was cut at rather than leave you inferring.
+            const grid = if (spray.last.neigh_cells > 0)
+                std.fmt.bufPrint(&gb, "  grid {d}@{s}", .{ spray.last.neigh_cells, fixed.format(spray.last.neigh_cell, &cb) }) catch ""
+            else
+                "";
+            std.debug.print("tick {d:>6}  t={d}ms  live {d:>6}  +{d} -{d}{s}  steps {d}{s}\n", .{
                 t,                                                   now.time_ns / std.time.ns_per_ms, spray.pop.live, spray.last.spawned, spray.last.died,
-                if (spray.last.refused > 0) "  FULL" else "", spray.last.row_steps,
+                if (spray.last.refused > 0) "  FULL" else "", spray.last.row_steps, grid,
             });
         }
     }
