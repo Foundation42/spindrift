@@ -91,7 +91,7 @@ fn usage() void {
         \\Example — 400 embers a second under gravity, one second, dumped:
         \\  drift-run --rate 400 --speed 3 --spread 1 --gravity -9.8 --life 800 --ticks 60 --dump embers.struple
         \\Example — smoke that leans in the wind and makes a room dank:
-        \\  drift-run --kernel kernels/smoke.rill --gravity 0.5 --seed plane.drift.@em.lean=-1 \\
+        \\  drift-run --kernel kernels/smoke.rill --gravity 0.5 --seed plane.drift.@em.k.lean=-1 \\
         \\    --channel '$wind:0.01:1000' --channel '$dankness:0.001:2000' --samples '$wind:0.5' \\
         \\    --casts '$dankness:0.02' --rill wind.rill --ear '$dankness@0,3,0' --ticks 120
         \\
@@ -333,7 +333,7 @@ pub fn main() !u8 {
     // The gravity knob is seeded like any other, unless a --seed already said.
     {
         var buf: [256]u8 = undefined;
-        const gpath = try std.fmt.bufPrint(&buf, "plane.drift.@{s}.gravity", .{o.name});
+        const gpath = try std.fmt.bufPrint(&buf, "plane.drift.@{s}.k.gravity", .{o.name});
         if (mock.store.get(gpath) == null) {
             pk.reset();
             try pk.appendF64(fixed.toF64(o.gravity));

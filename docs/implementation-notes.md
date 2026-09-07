@@ -1360,3 +1360,45 @@ NONE. Four a second at a quarter-second tick is one row; a rate of 1/s is
 a quarter of one, and the rate was zeroed before it had been born. It
 failed loudly, which is the only reason it is not still passing quietly —
 the gate now asserts `live == 1` at the spawn tick and again at the end.
+
+
+**Knob rooms, 2026-09-07 (ruled: "break stuff early").** The fire beat's
+finding (a) closed. `plane.drift.@self.spread` named as a kernel's own
+spreading rate silently retuned the SPRAY's launch cone to 0.013 cells/s,
+because the host re-reads its knobs from the plane every tick — which is
+the documented interface, `write plane.drift.@sparks.rate 2 mul`, the
+README's headline. One path, two owners, and NEITHER WRONG: no guard on
+names could tell a kernel meaning `spread` from a host meaning it. So the
+fix is a room, not a rule.
+
+`rate`, `speed`, `spread`, `life` — the four in `Knobs`, and exactly the
+four matryoshka's rills write — stay flat and stay readable by a kernel;
+that is what they are for. Everything else a kernel wants told to it goes
+under `.k.`, and a kernel naming any other knob flat under its own `@name`
+is refused at MOUNT, by name, with where to put it. The check walks the
+mounted program's subscriptions, beside the `hear` refusal that was
+already there. **`gravity` moved with the rest** — it was never a spray
+knob at all, only a kernel one that `drift-run` seeded on the flat path,
+which is the confusion in miniature and is why the old spelling
+`gravity plane.drift.@self.gravity` now refuses.
+
+The direction was chosen for cost: moving the SPRAY's four into a
+sub-room would have broken the README's headline and every rill in
+matryoshka that drives a spray. Moving the KERNEL's own knobs cost
+matryoshka three string sites (one kernel source, two comments) and no
+plane path at all — it writes only the reserved four and reads only
+`@self.gravity`.
+
+**Gate:** "a kernel's own knob in the SPRAY's room is refused at mount by
+name, and the spray's own four are still readable" — six cases: `.k.`
+mounts; the same knob flat refuses; `@self.speed` mounts, because reading
+the spray's own knob is the point; the spray's `@name` is the same room as
+`@self`; another spray's room and the rest of the plane are not ours to
+police. The refusal is asserted to NAME the `.k.` spelling — a refusal
+nobody can act on is half a refusal. **Mutations, three, all bitten:** the
+guard dropped; `SPRAY_KNOBS` emptied (a legitimate `@self.speed` read
+starts refusing); the `.k.` room not recognised.
+
+**Not run:** matryoshka's suite. Its half of this is three string sites
+with no matching plane path anywhere in the repo, and a heavy run is
+Christian's call, not a reflex — said here rather than implied.

@@ -22,13 +22,16 @@ kernel is a rill mounted on a spray rather than on the world:
 ```rill
 // kernels/embers.rill
 spawn
-gravity plane.drift.@self.gravity
+gravity plane.drift.@self.k.gravity
 perish
 ```
 
 Row fields are `row.pos`, `row.vel`, `row.age` … (sigil mandatory); the
 spray's knobs are `plane.drift.@self.<knob>`, broadcast to every row;
-writes are `write row.<field> [add]`. Rill owns the row plane — the
+writes are `write row.<field> [add]`. The spray's own four (`rate`,
+`speed`, `spread`, `life`) are the host's interface and a kernel may read
+them; a kernel's OWN knobs go under `.k.` and naming one flat is refused
+at mount. Rill owns the row plane — the
 row-legal column, the integer kernels for the exact core set, the row
 runtime (`rill/src/row.zig`, spec §3.16). Spindrift owns the population as
 a row plane, the spray with its four-phase tick over `common/jobs.zig`, the
@@ -47,8 +50,8 @@ bill was zero.
 ```rill
 // kernels/smoke.rill — leans away from the wind's source
 spawn
-gravity plane.drift.@self.gravity
-$wind grad at row.pos | mul plane.drift.@self.lean | write row.vel add
+gravity plane.drift.@self.k.gravity
+$wind grad at row.pos | mul plane.drift.@self.k.lean | write row.vel add
 perish
 ```
 
@@ -66,15 +69,15 @@ beside this in matryoshka's own repo.
 zig build                                   # library + drift-run
 zig build run -- --rate 400 --speed 3 --spread 1 --gravity -9.8 --life 800 --ticks 60 --dump embers.struple
 zig build run -- --kernel my.rill --rill hud.rill   # your kernel, a rill driving the knobs
-zig build run -- --kernel kernels/smoke.rill --gravity 0.5 --seed plane.drift.@em.lean=-1 \
+zig build run -- --kernel kernels/smoke.rill --gravity 0.5 --seed plane.drift.@em.k.lean=-1 \
   --channel '$wind:0.01:1000' --channel '$dankness:0.001:2000' --samples '$wind:0.5' \
   --casts '$dankness:0.02' --rill wind.rill --ear '$dankness@0,3,0'   # smoke in the wind
 zig build run -- --kernel kernels/fire.rill --rate 380 --speed 4.2 --spread 1.6 --life 2600 \
   --gravity -9.8 --pos 0,0.15,0 --aim 0,1,0 --ticks 220 --world floor \
-  --seed plane.drift.@em.cool=1.25 --seed plane.drift.@em.plunge=10 --seed plane.drift.@em.chill=0.75 \
-  --seed plane.drift.@em.smoke=0.875 --seed plane.drift.@em.quench=5.625 \
-  --seed plane.drift.@em.thin=0.8125 --seed plane.drift.@em.settle=17.5 \
-  --seed plane.drift.@em.puff=0.3 --seed plane.drift.@em.grain=0.06 --dump fire.struple
+  --seed plane.drift.@em.k.cool=1.25 --seed plane.drift.@em.k.plunge=10 --seed plane.drift.@em.k.chill=0.75 \
+  --seed plane.drift.@em.k.smoke=0.875 --seed plane.drift.@em.k.quench=5.625 \
+  --seed plane.drift.@em.k.thin=0.8125 --seed plane.drift.@em.k.settle=17.5 \
+  --seed plane.drift.@em.k.puff=0.3 --seed plane.drift.@em.k.grain=0.06 --dump fire.struple
   # the manifold walk: rows leave with no history and the world writes it —
   # a landed ember quenches (cooled .98, sooted .95, dense), one still in
   # the air blows thin (.48/.36/.34). No colour is written anywhere.

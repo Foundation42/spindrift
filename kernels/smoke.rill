@@ -8,6 +8,6 @@
 // deposit has decayed. The cast the other way — `casts $dankness` — is
 // declared on the ^spray too: one aggregate per tick, not a row's business.
 spawn
-gravity plane.drift.@self.gravity
-$wind grad at row.pos | mul plane.drift.@self.lean | write row.vel add
+gravity plane.drift.@self.k.gravity
+$wind grad at row.pos | mul plane.drift.@self.k.lean | write row.vel add
 perish

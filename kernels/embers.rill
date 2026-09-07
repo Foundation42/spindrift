@@ -7,5 +7,5 @@
 // tick; `perish` retires a row when its age reaches its life. Integration
 // is not a word: a velocity moves its position.
 spawn
-gravity plane.drift.@self.gravity
+gravity plane.drift.@self.k.gravity
 perish

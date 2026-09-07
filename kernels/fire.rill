@@ -28,23 +28,23 @@
 // every other. That kernel is what `relax` was built for.
 
 spawn
-gravity plane.drift.@self.gravity
+gravity plane.drift.@self.k.gravity
 collide | stick
 perish
 
 // -- cooled ------------------------------------------------------------
 // It cools on its own,
-row.u0 | relax 1 plane.drift.@self.cool | write row.u0 add
+row.u0 | relax 1 plane.drift.@self.k.cool | write row.u0 add
 // faster against something it landed on (the cold plate),
-row.u0 | relax 1 plane.drift.@self.plunge | mul row.stuck | write row.u0 add
+row.u0 | relax 1 plane.drift.@self.k.plunge | mul row.stuck | write row.u0 add
 // and faster once it is thin enough for the air to get at it.
-row.u0 | relax 1 plane.drift.@self.chill | mul row.u2 | write row.u0 add
+row.u0 | relax 1 plane.drift.@self.k.chill | mul row.u2 | write row.u0 add
 
 // -- sooted ------------------------------------------------------------
 // Carbon accumulates as it burns,
-row.u1 | relax 1 plane.drift.@self.smoke | write row.u1 add
+row.u1 | relax 1 plane.drift.@self.k.smoke | write row.u1 add
 // and a quench dumps it: incomplete combustion is what a soot mark IS.
-row.u1 | relax 1 plane.drift.@self.quench | mul row.stuck | write row.u1 add
+row.u1 | relax 1 plane.drift.@self.k.quench | mul row.stuck | write row.u1 add
 
 // -- thinned -----------------------------------------------------------
 // It spreads as it goes. (The knob is `thin`, not `spread`: a kernel's
@@ -52,14 +52,14 @@ row.u1 | relax 1 plane.drift.@self.quench | mul row.stuck | write row.u1 add
 // one `spread` silently retuned the launch cone to 0.013 cells/s — the
 // mount line still printed the 1.6 the flag asked for, and every row
 // went straight up in a pencil. Named for the channel it drives.)
-row.u2 | relax 1 plane.drift.@self.thin | write row.u2 add
+row.u2 | relax 1 plane.drift.@self.k.thin | write row.u2 add
 // A stuck row is pulled back toward dense, so a soot mark stays a mark.
 // It does not reach zero: `thin` is not gated on being free, so the two
 // lines BALANCE at thin/(thin + settle) rather than cancelling. Gating
 // it would want two saturating factors in one flow, which a row cannot
 // spell today.
-row.u2 | relax 0 plane.drift.@self.settle | mul row.stuck | write row.u2 add
+row.u2 | relax 0 plane.drift.@self.k.settle | mul row.stuck | write row.u2 add
 
 // The row's SIZE is state too, not a curve: a thin row is a wide one.
 // (funideas §9 — the particle morphs its whole rendering model.)
-row.u2 | mul plane.drift.@self.puff | add plane.drift.@self.grain | write row.size
+row.u2 | mul plane.drift.@self.k.puff | add plane.drift.@self.k.grain | write row.size

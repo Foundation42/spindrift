@@ -16,6 +16,24 @@ on the write node and lands nothing, beat 6), `row.u0`–`row.u3`;
 the spray's knobs
 are `plane.drift.@self.<knob>`, broadcast to every row.
 
+**A kernel's own knobs live in their own room.** `rate`, `speed`, `spread`
+and `life` under the spray's `@name` are the SPRAY's four — the host's
+documented interface, driven from an ordinary rill (`write
+plane.drift.@sparks.rate 2 mul`) and re-read by the host every tick. A
+kernel may READ them; that is what they are for. Everything else a kernel
+wants told to it goes under `.k.` — `plane.drift.@self.k.gravity`,
+`@self.k.lean` — and a kernel naming any other knob flat under its own
+`@name` is refused at MOUNT, by name, with where to put it instead.
+
+The room exists because one path had two owners and neither was wrong.
+`plane.drift.@self.spread`, meant as a kernel's own spreading rate, was
+also the spray's launch cone: the host re-read it every tick and retuned
+the cone to 0.013 cells/s while the mount line printed the 1.6 the flag
+had asked for. Every row went straight up in a pencil, green. `gravity`
+moved into `.k.` with the rest — it was never a spray knob at all, only a
+kernel one that `drift-run` seeded on the flat path, which is the whole
+confusion in miniature.
+
 **A user channel carrying a manifold coordinate must stay in range, and
 nothing here will tell you if it does not.** `row.alpha` carries bounds so
 a bad curve refuses on the write node rather than looking plausible
@@ -31,7 +49,7 @@ and the range holds by construction rather than by care.
 ```rill
 // embers.rill
 spawn
-gravity plane.drift.@self.gravity
+gravity plane.drift.@self.k.gravity
 perish
 ```
 
@@ -39,8 +57,8 @@ perish
 // smoke.rill — leans away from the wind's source, and (declared on the
 // ^spray, not here) casts $dankness where it drifts
 spawn
-gravity plane.drift.@self.gravity
-$wind grad at row.pos | mul plane.drift.@self.lean | write row.vel add
+gravity plane.drift.@self.k.gravity
+$wind grad at row.pos | mul plane.drift.@self.k.lean | write row.vel add
 perish
 ```
 
@@ -79,7 +97,7 @@ stateful — a different thing wearing a near name.
 
 `row.age | over row.life [1.0, 0.7, 0.0]` — a value over normalised life,
 piecewise linear over evenly spaced knots, numbers or Oklab colours, the
-curve a literal or a broadcast (`plane.drift.@self.size_curve`) — was
+curve a literal or a broadcast (`plane.drift.@self.k.size_curve`) — was
 spindrift's fifth word from beat 3. In beat 5 rill took it into its core
 (rill `23ac55c`): the same spelling, the same bits (the clamped divide,
 the segment by shift, the fraction by mask, `lerpVal`), on the plane as

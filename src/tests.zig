@@ -35,7 +35,7 @@ const Script = struct {
     dt_ns: u64 = std.time.ns_per_s / 2,
     ticks: u32 = 20,
     chunk: u32 = spindrift.spray.DEFAULT_CHUNK,
-    kernel: []const u8 = "spawn\ngravity plane.drift.@self.gravity\nperish\n",
+    kernel: []const u8 = "spawn\ngravity plane.drift.@self.k.gravity\nperish\n",
 };
 
 /// Mount a spray with the script's kernel on a mock plane (gravity seeded
@@ -49,7 +49,7 @@ fn run(gpa: std.mem.Allocator, s: Script, js: ?*jobs.JobSystem) ![]u8 {
     // The knob crosses the plane as a number in cells — a float, at the one
     // boundary. (Seeded as the raw fixed integer, it read as −655360 cells,
     // out of range, and every G0 run was gravity-free while green.)
-    try mock.putValue("plane.drift.@em.gravity", fixed.toF64(try fixed.parseDecimal(s.gravity)));
+    try mock.putValue("plane.drift.@em.k.gravity", fixed.toF64(try fixed.parseDecimal(s.gravity)));
     var floor = spindrift.Floor{};
     var spray = try Spray.init(gpa, s.capacity, s.seed, floor.asWorld());
     defer spray.deinit();
@@ -226,16 +226,16 @@ test "gravity: the knob is a broadcast — one write on the plane bends every ro
     defer b.deinit(gpa);
     b.spray.name = "sparks";
     b.spray.knobs = .{ .rate = fixed.fromInt(2), .life_ns = 100 * std.time.ns_per_s };
-    try b.mount("gravity plane.drift.@self.gravity\n");
+    try b.mount("gravity plane.drift.@self.k.gravity\n");
     try b.tick(0, 0);
     try b.tick(1, std.time.ns_per_s); // two rows, no knob yet: quiet, vel 0
     try testing.expectEqual(@as(Fixed, 0), b.spray.pop.vel[1][0]);
-    try b.mock.putValue("plane.drift.@sparks.gravity", @as(i64, -2));
+    try b.mock.putValue("plane.drift.@sparks.k.gravity", @as(i64, -2));
     try b.tick(2, 2 * std.time.ns_per_s);
     try testing.expectEqual(-fixed.fromInt(2), b.spray.pop.vel[1][0]);
     try testing.expectEqual(-fixed.fromInt(2), b.spray.pop.vel[1][3]);
     // A knob under another name is somebody else's.
-    try b.mock.putValue("plane.drift.@em.gravity", @as(i64, -50));
+    try b.mock.putValue("plane.drift.@em.k.gravity", @as(i64, -50));
     try b.tick(3, 3 * std.time.ns_per_s);
     try testing.expectEqual(-fixed.fromInt(4), b.spray.pop.vel[1][0]);
 }
@@ -379,7 +379,7 @@ test "freelist: a live row keeps its id, its seed and its generation while other
     // A rolling population of four: two aged 0, two aged 1.
     b.spray.knobs = .{ .rate = fixed.fromInt(2), .speed = fixed.fromInt(1), .spread = fixed.ONE, .life_ns = 2 * std.time.ns_per_s };
     try b.mount(embers);
-    try b.mock.putValue("plane.drift.@em.gravity", @as(i64, -1));
+    try b.mock.putValue("plane.drift.@em.k.gravity", @as(i64, -1));
     var t: u64 = 0;
     while (t <= 4) : (t += 1) try b.tick(t, t * std.time.ns_per_s);
     try testing.expectEqual(@as(u32, 4), b.spray.pop.live);
@@ -614,7 +614,7 @@ test "negative control: P1 has no collision — the floor and no world at all ag
     defer reg.deinit();
     var mock = rill.MockPlane.init(gpa);
     defer mock.deinit();
-    try mock.putValue("plane.drift.@em.gravity", fixed.toF64(try fixed.parseDecimal(s.gravity)));
+    try mock.putValue("plane.drift.@em.k.gravity", fixed.toF64(try fixed.parseDecimal(s.gravity)));
     var nowhere = spindrift.Nowhere{};
     var spray = try Spray.init(gpa, s.capacity, s.seed, nowhere.asWorld());
     defer spray.deinit();
@@ -931,6 +931,59 @@ test "smoke.rill: the shipped kernel parses and mounts on a spray that samples $
 
 
 
+
+test "knob rooms: a kernel's own knob in the SPRAY's room is refused at mount by name, and the spray's own four are still readable" {
+    // The bug this is paid for (2026-09-07): `plane.drift.@self.spread`
+    // named as a kernel's own spreading rate silently retuned the launch
+    // cone to 0.013 cells/s. Nothing was wrong with either party — the
+    // spray re-reads its knobs from the plane every tick because that is
+    // the host's documented interface (`write plane.drift.@sparks.rate`),
+    // and a kernel reads broadcasts from the same room. One path, two
+    // owners. The mount line printed the 1.6 the flag asked for and every
+    // row went straight up in a pencil, green.
+    //
+    // Mutation: the guard dropped — the flat `@self.cool` mounts happily
+    // and we are back to a kernel able to retune the spray by naming.
+    // Mutation: `SPRAY_KNOBS` emptied — `@self.speed`, a legitimate read
+    // of the spray's own knob, starts refusing.
+    const gpa = testing.allocator;
+    const cases = [_]struct { src: []const u8, mounts: bool }{
+        // A kernel's own knob, in its own room.
+        .{ .src = "gravity plane.drift.@self.k.gravity\n", .mounts = true },
+        // The same knob flat: refused. `gravity` was never a SPRAY knob —
+        // only a kernel one that drift-run seeded flat, which is the whole
+        // confusion in miniature.
+        .{ .src = "gravity plane.drift.@self.gravity\n", .mounts = false },
+        // One of the spray's own four, read by a kernel: allowed, because
+        // that is what they are for.
+        .{ .src = "gravity plane.drift.@self.speed\n", .mounts = true },
+        // The spray's own @name is the same room as @self.
+        .{ .src = "gravity plane.drift.@em.cool\n", .mounts = false },
+        // Somebody else's room is not ours to police.
+        .{ .src = "gravity plane.drift.@other.cool\n", .mounts = true },
+        // Nor is the rest of the plane.
+        .{ .src = "gravity plane.ui.cool\n", .mounts = true },
+    };
+    for (cases) |c| {
+        const b = try Bench.init(gpa, 4, 1);
+        defer b.deinit(gpa);
+        b.spray.name = "em";
+        var diag = rill.registry.Detail{};
+        const got = b.spray.mountKernel(&b.reg, "k", c.src, &diag);
+        if (c.mounts) {
+            got catch |err| {
+                std.debug.print("'{s}' should mount, refused: {s}\n", .{ c.src, diag.text() });
+                return err;
+            };
+        } else {
+            try testing.expectError(error.Mount, got);
+            // By NAME, and it says where to put it — a refusal that does not
+            // name the path is a refusal nobody can act on.
+            try testing.expect(std.mem.indexOf(u8, diag.text(), ".k.") != null);
+        }
+    }
+}
+
 test "slide: the contact's normal leaves the velocity — what is left is the tangent, and the row is on the surface" {
     // `slide` cannot be gated on a floor: there gravity is entirely normal,
     // so the tangent a slide leaves is the velocity the row already had and
@@ -1150,7 +1203,7 @@ test "fire.rill: the appearance coordinate is the WORLD's, not the clock's — o
         var mock = rill.MockPlane.init(gpa);
         defer mock.deinit();
         var buf: [64]u8 = undefined;
-        for (knobs) |k| try mock.putValue(try std.fmt.bufPrint(&buf, "plane.drift.@em.{s}", .{k[0]}), k[1]);
+        for (knobs) |k| try mock.putValue(try std.fmt.bufPrint(&buf, "plane.drift.@em.k.{s}", .{k[0]}), k[1]);
         // The ONLY difference between the two runs.
         var floor = spindrift.Floor{};
         var nowhere = spindrift.Nowhere{};
@@ -1327,8 +1380,8 @@ test "over: the curve may be a broadcast the applet edits — converted once per
     const b = try Bench.init(gpa, 4, 1);
     defer b.deinit(gpa);
     b.spray.knobs = .{ .rate = fixed.fromInt(1), .life_ns = 2 * std.time.ns_per_s };
-    try b.mock.putValue("plane.drift.@em.size_curve", [_]f64{ 1, 0 });
-    try b.mount("row.age | over row.life plane.drift.@self.size_curve | write row.size\n");
+    try b.mock.putValue("plane.drift.@em.k.size_curve", [_]f64{ 1, 0 });
+    try b.mount("row.age | over row.life plane.drift.@self.k.size_curve | write row.size\n");
     try b.tick(0, 0);
     try b.tick(1, std.time.ns_per_s); // born, t = 0
     b.spray.knobs.rate = 0;
@@ -1337,13 +1390,13 @@ test "over: the curve may be a broadcast the applet edits — converted once per
     try testing.expectEqual(fixed.HALF, b.spray.pop.size[0]);
     try testing.expectEqual(@as(usize, 1), b.spray.array_casts.items.len);
     // The applet drags the curve: [1, 0] → [1, 1] — halfway is now 1.
-    try b.mock.putValue("plane.drift.@em.size_curve", [_]f64{ 1, 1 });
+    try b.mock.putValue("plane.drift.@em.k.size_curve", [_]f64{ 1, 1 });
     b.spray.pop.age_ns[0] = std.time.ns_per_s; // hold t at 0.5 for the read
     try b.tick(3, 3 * std.time.ns_per_s);
     try testing.expectEqual(fixed.ONE, b.spray.pop.size[0]);
     try testing.expectEqual(@as(usize, 1), b.spray.array_casts.items.len); // replaced, not accumulated
     // A number where a curve should be: the row refuses, by name.
-    try b.mock.putValue("plane.drift.@em.size_curve", @as(f64, 3));
+    try b.mock.putValue("plane.drift.@em.k.size_curve", @as(f64, 3));
     try b.tick(4, 4 * std.time.ns_per_s);
     try testing.expectEqual(@as(u32, 1), b.spray.last.refusals);
     try testing.expect(std.mem.indexOf(u8, b.spray.last_refusal.text(), "wants an array, got a number") != null);
@@ -1719,7 +1772,7 @@ test "G0 with a fade: same script, same bytes — and `alpha` rode the dump, bet
     // Mutation: `alpha` left out of the dump (the column is missing), or the
     // kernel's write never reaching the row (no value between 0 and 1).
     const gpa = testing.allocator;
-    const s = Script{ .kernel = "spawn\ngravity plane.drift.@self.gravity\nrow.age | over row.life [1, 1, 0] | write row.alpha\nperish\n" };
+    const s = Script{ .kernel = "spawn\ngravity plane.drift.@self.k.gravity\nrow.age | over row.life [1, 1, 0] | write row.alpha\nperish\n" };
     const a = try run(gpa, s, null);
     defer gpa.free(a);
     const b = try run(gpa, s, null);

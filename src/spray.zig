@@ -75,6 +75,11 @@ pub const Knobs = struct {
     life_ns: u64 = std.time.ns_per_s,
 };
 
+/// The four knobs the SPRAY owns under its own `@name`. A kernel may read
+/// them — that is what they are for — but may not mean something else by
+/// them, and may not put its own knobs beside them.
+pub const SPRAY_KNOBS = [_][]const u8{ "rate", "speed", "spread", "life" };
+
 /// `samples $wind cell 0.5` on the archetype: a channel the kernel may
 /// `hear`, and the lattice's declared cell size in cells.
 pub const Sampled = struct {
@@ -345,6 +350,22 @@ pub const Spray = struct {
     /// names which. `reg` must outlive the spray: the program borrows it.
     /// A spray with a kernel mounted must not be moved: the runtime holds a
     /// pointer to the program inside it.
+    /// The part of `path` after this spray's own broadcast prefix, or null
+    /// if the path is somebody else's. `@self` and the spray's own `@name`
+    /// are the same room.
+    fn ownKnobTail(self: *const Spray, path: []const u8) ?[]const u8 {
+        const pre = "plane.drift.@";
+        if (!std.mem.startsWith(u8, path, pre)) return null;
+        const rest = path[pre.len..];
+        inline for (.{ "self", "" }) |lit| {
+            const who = if (lit.len != 0) lit else self.name;
+            if (rest.len > who.len + 1 and std.mem.startsWith(u8, rest, who) and rest[who.len] == '.') {
+                return rest[who.len + 1 ..];
+            }
+        }
+        return null;
+    }
+
     pub fn mountKernel(self: *Spray, reg: *rill.Registry, kernel_name: []const u8, source: []const u8, diag: *rill.registry.Detail) MountError!void {
         self.unmountKernel();
         var pdiag = rill.Diag{};
@@ -372,6 +393,31 @@ pub const Spray = struct {
             } else false;
             if (!declared) {
                 diag.set("{s}: '{s} at …' — this spray does not sample {s}; declare `samples {s} cell <c>` on its ^spray", .{ n.name, chan, chan, chan });
+                return error.Mount;
+            }
+        }
+        // The kernel's knobs live in their own room (2026-09-07, ruled).
+        // `rate`, `speed`, `spread` and `life` under the spray's own @name
+        // are the SPRAY's — the host's documented interface, driven from a
+        // rill (`write plane.drift.@sparks.rate 2 mul`) and re-read by the
+        // host every tick. Everything else a kernel wants to be told goes
+        // under `.k.`, and naming it flat is refused HERE rather than
+        // obeyed: `plane.drift.@self.spread` meant as a kernel's own
+        // spreading rate silently retuned the launch cone to 0.013 cells/s
+        // while the mount line printed the 1.6 the flag had asked for, and
+        // every row went up in a pencil, green. One path, two owners, and
+        // neither of them wrong — so the fix is a room, not a rule about
+        // names. Gravity moved with the rest: it was never a spray knob,
+        // only a kernel one that drift-run seeded on the flat path, which
+        // is the whole confusion in miniature.
+        for (prog.subs.items) |sub| {
+            const tail = self.ownKnobTail(sub.path) orelse continue;
+            if (std.mem.startsWith(u8, tail, "k.")) continue;
+            const reserved = for (SPRAY_KNOBS) |r| {
+                if (std.mem.eql(u8, tail, r)) break true;
+            } else false;
+            if (!reserved) {
+                diag.set("{s}: '{s}' is in the spray's own room — {s} is not one of its knobs ({s}). A kernel's own knobs go under `.k.`: say `plane.drift.@self.k.{s}`", .{ kernel_name, sub.path, tail, "rate, speed, spread, life", tail });
                 return error.Mount;
             }
         }
