@@ -1442,3 +1442,15 @@ value, and it is gated as that now, in rill.
 **Found while gating:** `stick`'s publish had no gate at all when first
 written — a line nobody checks. It has one now rather than being dropped,
 because the landing-tick fact is one a kernel will want.
+
+
+**`--world slope`, same day.** `drift-run`'s existing `--world` learned the
+third mock rather than the CLI learning a fourth flag — Christian's note:
+*"we keep adding command line arguments to the renderer, we shouldn't need
+those, that's what --exec is for"*. The flag whose entire job is choosing
+the mock world now chooses among the three that exist (`floor`, `slope`,
+`none`), and nothing was added beside it. Matryoshka's CLI was not touched
+at all; `--exec` is its door and it already has one.
+
+The slope is the gates' own 3-4-5 plane, so the picture and the gate collide
+against the same numbers.

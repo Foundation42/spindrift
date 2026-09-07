@@ -29,7 +29,7 @@
 //!   --gravity <cells/s²>   seeds plane.drift.@<name>.gravity (the embers kernel reads it)
 //!   --pos <x,y,z>          spray position, cells
 //!   --aim <x,y,z>          launch direction × 1.0 (default 0,1,0)
-//!   --world floor|none     the mock World (default floor)
+//!   --world floor|slope|none  the mock World (default floor)
 //!   --name <em>            the spray's @name on the plane (default em)
 //!   --jobs <n>             worker threads for the sweep (default 0: inline)
 //!   --chunk <n>            rows per job (default 1024)
@@ -74,7 +74,7 @@ fn usage() void {
         \\  --life <ms>           row lifetime
         \\  --gravity <decimal>   seeds plane.drift.@<name>.gravity for the embers kernel
         \\  --pos <x,y,z>  --aim <x,y,z>
-        \\  --world floor|none    the mock World (default floor)
+        \\  --world floor|slope|none  the mock World (default floor); `slope` is the 3-4-5 plane `slide` needs
         \\  --name <em>           the spray's @name on the plane (default em)
         \\  --jobs <n>            worker threads (default 0: inline)
         \\  --chunk <n>           rows per job (default 1024)
@@ -108,7 +108,11 @@ const Options = struct {
     gravity: Fixed = -(9 * fixed.ONE + 52428), // -9.8
     pos: fixed.Vec = fixed.zero_vec,
     aim: fixed.Vec = .{ 0, fixed.ONE, 0 },
-    floor: bool = true,
+    /// Which mock `World` answers the tracer words. Not a new flag — the one
+    /// that already exists for exactly this choice, learning the mock that
+    /// already exists (`world.Plane`). Christian, 2026-09-07: the CLI is not
+    /// where knobs go.
+    world: enum { floor, slope, none } = .floor,
     name: []const u8 = "em",
     jobs: u32 = 0,
     chunk: u32 = spindrift.spray.DEFAULT_CHUNK,
@@ -278,10 +282,12 @@ pub fn main() !u8 {
             o.aim = parseVec(v) catch return bad(a, v, "x,y,z");
         } else if (std.mem.eql(u8, a, "--world")) {
             if (std.mem.eql(u8, v, "floor")) {
-                o.floor = true;
+                o.world = .floor;
+            } else if (std.mem.eql(u8, v, "slope")) {
+                o.world = .slope;
             } else if (std.mem.eql(u8, v, "none")) {
-                o.floor = false;
-            } else return bad(a, v, "floor or none");
+                o.world = .none;
+            } else return bad(a, v, "floor, slope or none");
         } else if (std.mem.eql(u8, a, "--name")) {
             o.name = v;
         } else if (std.mem.eql(u8, a, "--jobs")) {
@@ -383,8 +389,16 @@ pub fn main() !u8 {
 
     // -- the spray and its kernel --------------------------------------------
     var floor = spindrift.Floor{};
+    // The 3-4-5 slope through the origin, the same one the gates use: a
+    // hearth's cheek, and the surface `slide` needs — on a flat floor
+    // gravity is entirely normal and a slide has nothing to show.
+    var slope = spindrift.Plane{ .n = .{ -fixed.fromRatio(6, 10), fixed.fromRatio(8, 10), 0 }, .d = 0 };
     var nowhere = spindrift.Nowhere{};
-    const world = if (o.floor) floor.asWorld() else nowhere.asWorld();
+    const world = switch (o.world) {
+        .floor => floor.asWorld(),
+        .slope => slope.asWorld(),
+        .none => nowhere.asWorld(),
+    };
     var spray = try spindrift.Spray.init(gpa, o.capacity, o.rng, world);
     defer spray.deinit();
     spray.name = o.name;
@@ -423,7 +437,7 @@ pub fn main() !u8 {
 
     var nb: [32]u8 = undefined;
     std.debug.print("spray @{s}: kernel '{s}' ({d} nodes), capacity {d}, rng {d}, dt {d}ms, world {s}, jobs {d}\n", .{
-        o.name, kernel_name, spray.kernel.?.prog.nodeCount(), o.capacity, o.rng, o.dt_ms, if (o.floor) "floor" else "none", o.jobs,
+        o.name, kernel_name, spray.kernel.?.prog.nodeCount(), o.capacity, o.rng, o.dt_ms, @tagName(o.world), o.jobs,
     });
     std.debug.print("  knobs: rate {s}", .{fixed.format(spray.knobs.rate, &nb)});
     std.debug.print(" speed {s}", .{fixed.format(spray.knobs.speed, &nb)});
