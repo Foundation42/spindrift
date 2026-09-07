@@ -1454,3 +1454,50 @@ at all; `--exec` is its door and it already has one.
 
 The slope is the gates' own 3-4-5 plane, so the picture and the gate collide
 against the same numbers.
+
+
+**Neighbours, 2026-09-07 (`near`, `push`; rill `9777ea9` is the lane they
+forced).** The eleventh and twelfth words, and the customer that turned the
+slate's handle lane from recorded into built: `near` has a LIST of row ids
+to hand to `push`, and a list is the one thing a row `Val` cannot hold —
+the row plane's arrays are literal-only and no operator emits one. So the
+list rides the slate as a native handle, a pointer into the spray's
+per-chunk buffer, valid for exactly that row's evaluation.
+
+The neighbourhood is a uniform hash grid over the live rows, built at the
+TAIL OF THE SERIAL SPAWN rather than in a seventh phase — the sweep must
+see one snapshot of where everybody is, and the end of spawn is exactly
+that instant. Built only when a mounted kernel says `near`, so a spray that
+never asks pays nothing. Counting sort, two passes, no allocation; capacity
+is still the only one.
+
+**Found, and it is the beat's real lesson.** The first cut read `pop.pos`
+live. But `sweepRows` integrates a row the instant its kernel is done, so
+by the time row 1 was swept, row 0 had already moved — row 1 saw NO
+neighbour where row 0 saw one, and the answer depended on the order rows
+happened to be visited in, which under chunking is no order at all. The
+neighbourhood now stores the positions it was built from and both words
+read those. The gate that caught it is the one asserting the pair leans
+apart by equal and opposite amounts: symmetry is exactly what a
+half-updated world destroys.
+
+**Gates three.** The pair (counts, the exact ∓ push, and a lone row that
+does not move); the two mount refusals (a `push` with no `near` above it,
+and `near`'s radius wider than the cell — the first two at mount, the third
+per row, because the cell is the host's and may change between ticks); and
+**one at scale**, a 4×4×4 lattice whose 288 counted neighbour-ends are what
+the geometry says. **Mutations eight, all bitten** — but two only after the
+scale gate existed: the cell check dropped (two of the 27 cells around a
+row hash to one bucket, and its rows are counted twice) and the bucket mask
+off by one (`& buckets` instead of `& buckets − 1`, so every row lands in
+one of two buckets). The second is not a correctness bug at all — the cell
+check still filters — so it is gated on the SPREAD instead, which is the
+honest claim: the hash is doing no work and every query has become a scan
+of half the population. A three-row scene showed neither. CLAUDE.md already
+said so about chunking: a grid's bugs are invisible until there is a grid.
+
+**Recorded, not built.** `push`'s falloff is the neighbourhood's own edge
+and nothing softer — a row just inside pushes, one just outside does not,
+and the step across is a discontinuity. Trigger: a customer that can see
+the seam. And the rest of funideas §6 — cohesion, alignment, `infect`,
+`synchronise` — all of which now have the machinery and want only a scene.

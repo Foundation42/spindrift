@@ -1173,6 +1173,124 @@ test "relax: a rate that walks away from the target, or that closes more than th
 
 
 
+
+test "near/push: a row leans away from the rows around it, a row alone does not move, and the list rides the slate" {
+    // The slate's HANDLE lane, and the customer that forced it: a list of
+    // row ids is the one thing a row value cannot hold — the row plane's
+    // arrays are literal-only and no operator emits one. So `near` says a
+    // pointer into the spray's per-chunk buffer and `push` reads it, both
+    // inside one row's evaluation, which is the only window in which that
+    // pointer means anything.
+    //
+    // Mutation: `near` publishes no handle — `push` is quiet and nothing moves.
+    // Mutation: `gatherNear` counts the row itself — the count is 2, not 1.
+    // Mutation: the neighbourhood not rebuilt — every count is 0.
+    // Mutation: `push` reads the row's own position twice (offset 0) — no push.
+    const gpa = testing.allocator;
+    const b = try Bench.init(gpa, 8, 1);
+    defer b.deinit(gpa);
+    b.spray.knobs = .{ .rate = fixed.fromInt(3), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+    try b.mount("near 0.9 | write row.u0\npush 5\n");
+    try b.tick(0, 0);
+    try b.tick(1, std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 3), b.spray.pop.live);
+    b.spray.knobs.rate = 0;
+    // Two within the radius, one well outside it. Set AFTER the spawn, so
+    // the next tick's grid is built over exactly these.
+    const p = &b.spray.pop;
+    // 0.5 is exact in Q16.16; 0.4 is 26214.4 and floors, which made the first
+    // cut of this gate expect a round number the arithmetic never produces.
+    inline for (.{ 0, 1, 2 }, .{ 0, fixed.HALF, fixed.fromInt(5) }) |id, x| {
+        p.pos[0][id] = x;
+        p.pos[1][id] = 0;
+        p.pos[2][id] = 0;
+        inline for (0..3) |a| p.vel[a][id] = 0;
+    }
+    try b.tick(2, 2 * std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 0), b.spray.last.refusals);
+
+    // Each of the near pair sees exactly ONE neighbour — itself excluded.
+    try testing.expectEqual(fixed.ONE, p.userOf(0)[0]);
+    try testing.expectEqual(fixed.ONE, p.userOf(1)[0]);
+    try testing.expectEqual(@as(Fixed, 0), p.userOf(2)[0]);
+    // And they lean apart, exactly: half a cell of offset, k = 5, dt = 1 s.
+    try testing.expectEqual(-fixed.fromRatio(5, 2), p.vel[0][0]);
+    try testing.expectEqual(fixed.fromRatio(5, 2), p.vel[0][1]);
+    // The lone row is not pushed by anything, and `push` wrote nothing at all.
+    try testing.expectEqual(@as(Fixed, 0), p.vel[0][2]);
+}
+
+
+test "the neighbourhood at scale: every count is what the geometry says, and the rows are spread across the buckets" {
+    // A 4x4x4 lattice at half-cell spacing. Two mutations survived a
+    // three-row scene and needed this one, which is the chunking gate's rule
+    // restated: a grid's bugs are invisible until there is a grid.
+    //
+    // Mutation: the cell check dropped — two of the 27 cells around a row
+    // hash to one bucket, its rows are counted twice, and the total exceeds
+    // the geometry's.
+    // Mutation: the bucket mask is `buckets` and not `buckets - 1` — every
+    // row lands in one of TWO buckets. The counts stay right, because the
+    // cell check still filters, so this is a gate on the SPREAD: the hash is
+    // doing no work and every query has become a scan of half the population.
+    const gpa = testing.allocator;
+    const b = try Bench.init(gpa, 128, 1);
+    defer b.deinit(gpa);
+    b.spray.knobs = .{ .rate = fixed.fromInt(64), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+    try b.mount("near 0.6 | write row.u0\n");
+    try b.tick(0, 0);
+    try b.tick(1, std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 64), b.spray.pop.live);
+    b.spray.knobs.rate = 0;
+    const p = &b.spray.pop;
+    for (0..64) |i| {
+        const id: u32 = @intCast(i);
+        p.pos[0][id] = fixed.HALF * @as(Fixed, @intCast(i % 4));
+        p.pos[1][id] = fixed.HALF * @as(Fixed, @intCast((i / 4) % 4));
+        p.pos[2][id] = fixed.HALF * @as(Fixed, @intCast(i / 16));
+    }
+    try b.tick(2, 2 * std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 0), b.spray.last.refusals);
+
+    // Neighbours at 0.5 are inside 0.6; the face diagonal at 0.707 is not.
+    // A 4x4x4 lattice has 3 x (3 x 4 x 4) = 144 axis-adjacent pairs, and each
+    // pair is counted from both ends.
+    var total: i64 = 0;
+    for (0..64) |i| total += p.userOf(@intCast(i))[0];
+    try testing.expectEqual(@as(i64, 288) * fixed.ONE, total);
+
+    // And the hash is doing its job: eight distinct cells, spread.
+    var used: u32 = 0;
+    var bkt: u32 = 0;
+    while (bkt <= b.spray.neigh_mask) : (bkt += 1) {
+        if (b.spray.neigh_starts[bkt + 1] > b.spray.neigh_starts[bkt]) used += 1;
+    }
+    try testing.expect(used >= 4);
+}
+
+test "near/push: mount refuses a `push` with no `near` above it, and `near` refuses a radius wider than the cell" {
+    // Both are the slate's rules doing their job on a real pair: a consumer
+    // of a name nobody says, and one that reads above the line that says it.
+    // Mutation: the handle lane's mount checks dropped — `push` alone mounts
+    // and is silently quiet on every row for ever.
+    const gpa = testing.allocator;
+    const b = try Bench.init(gpa, 8, 1);
+    defer b.deinit(gpa);
+    var diag = rill.registry.Detail{};
+    try testing.expectError(error.Mount, b.spray.mountKernel(&b.reg, "k", "push 5\n", &diag));
+    try testing.expect(std.mem.indexOf(u8, diag.text(), "nothing in this program says") != null);
+    try testing.expectError(error.Mount, b.spray.mountKernel(&b.reg, "k", "push 5\nnear 0.5 | write row.u0\n", &diag));
+    try testing.expect(std.mem.indexOf(u8, diag.text(), "above the line that says it") != null);
+
+    // A radius wider than the cell is a per-ROW refusal, not a mount one:
+    // the cell is the host's and may change between ticks.
+    try b.spray.mountKernel(&b.reg, "k", "near 4 | write row.u0\n", &diag);
+    b.spray.knobs = .{ .rate = fixed.fromInt(1), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+    try b.tick(0, 0);
+    try b.tick(1, std.time.ns_per_s);
+    try testing.expect(b.spray.last.refusals > 0);
+}
+
 test "slate: `stick` says contact on the landing tick and on no other — the EVENT, where row.stuck is the state" {
     // Why both words say it, and why the two are not the same fact. A landed
     // row has `row.stuck` set for ever after; it made CONTACT once. A kernel

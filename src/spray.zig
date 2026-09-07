@@ -129,12 +129,22 @@ pub const Stats = struct {
     coarsened: u32 = 0,
     /// Aggregate casts the host refused (an undeclared channel, no store).
     cast_refusals: u32 = 0,
+    /// Rows whose neighbourhood was larger than `MAX_NEIGHBOURS`, so `near`
+    /// handed on a truncated one. Said rather than absorbed.
+    crowded: u32 = 0,
 };
 
 /// Rows per job. ≈ 80 bytes of row across the arrays, so a chunk streams
 /// ≈ 80 KB — inside L2 with room for scratch. A constant until the first
 /// customer scene moves it (R-b §3).
 pub const DEFAULT_CHUNK: u32 = 1024;
+
+/// Rows one `near` may hand on. A cap and not a budget: a row with more
+/// neighbours than this is a row in a crowd, and the sweep counts it
+/// (`Stats.crowded`) rather than growing — capacity is still the only
+/// allocation. The cap is per row, so a dense spray says so instead of
+/// quietly costing more every tick.
+pub const MAX_NEIGHBOURS: u32 = 64;
 
 /// Grid points per axis a lattice may have. 33³ Q16.16 values is 144 KB
 /// per channel; a spray whose bounds want more gets a coarser cell and
@@ -294,6 +304,38 @@ pub const Spray = struct {
     staleness: u64 = 0,
     /// The first refusal's words from the last tick, for the host's log.
     last_refusal: rill.registry.Detail = .{},
+    /// The neighbourhood (see `buildNeighbourhood`). `neigh_starts` is
+    /// buckets+1 long so a bucket is `starts[b]..starts[b+1]`; `neigh_rows`
+    /// is capacity long; `neigh_bufs` is one `MAX_NEIGHBOURS` run per chunk,
+    /// which is what makes `near` row-local in the parallel sweep.
+    neigh_starts: []u32 = &.{},
+    neigh_rows: []u32 = &.{},
+    /// Each live row's CELL, filled by the build. A candidate is skipped
+    /// unless its cell is the cell being visited: two of the 27 cells around
+    /// a row can hash to one bucket, and without this the row in it would be
+    /// counted once per colliding cell. The distance test cannot catch that
+    /// — it is the same row at the same distance, twice.
+    neigh_cells: [][3]i32 = &.{},
+    /// Each live row's POSITION as of the build. `near` and `push` read
+    /// these and never `pop.pos`, because the sweep integrates a row the
+    /// instant its kernel is done — so by the time row 1 is swept, row 0 has
+    /// already moved. Reading live positions made a neighbourhood that
+    /// depended on the order rows happened to be visited in, which under
+    /// chunking is no order at all. One snapshot, taken once, read by
+    /// everybody: the same rule the lattices already follow.
+    neigh_pos: [][3]Fixed = &.{},
+    /// `buckets − 1`. Kept rather than derived: the first draft masked with
+    /// `starts.len − 2`, which is `buckets` itself, so every row landed in
+    /// one of two buckets.
+    neigh_mask: u32 = 0,
+    neigh_bufs: []u32 = &.{},
+    /// The grid's cell, host-set. `near` refuses a radius larger than it.
+    neigh_cell: Fixed = fixed.ONE,
+    /// Set at mount when the kernel says `near`. A spray that never asks
+    /// builds nothing.
+    wants_neighbours: bool = false,
+    /// Rows whose neighbourhood overflowed this tick; merged into `Stats`.
+    crowded_rows: u32 = 0,
     chunk_steps: []u32 = &.{},
     /// Per chunk: was a live row swept in it this tick? That is the whole
     /// rule — the renderer uploads dirty chunks and nothing else (campaign
@@ -323,16 +365,147 @@ pub const Spray = struct {
     said_coarsened: ?u32 = null,
 
     pub fn init(gpa: std.mem.Allocator, capacity: u32, seed: u32, world: World) !Spray {
-        return .{
+        // Buckets: a power of two at least the capacity, so `bucketAt` masks
+        // rather than divides. One spare entry for the `starts[b+1]` end.
+        var nb: u32 = 64;
+        while (nb < capacity) nb <<= 1;
+        var sp = Spray{
             .gpa = gpa,
             .pop = try Population.init(gpa, capacity),
             .seed = seed,
             .world = world,
         };
+        errdefer sp.pop.deinit();
+        sp.neigh_starts = try gpa.alloc(u32, nb + 2);
+        errdefer gpa.free(sp.neigh_starts);
+        sp.neigh_rows = try gpa.alloc(u32, capacity);
+        errdefer gpa.free(sp.neigh_rows);
+        sp.neigh_cells = try gpa.alloc([3]i32, capacity);
+        errdefer gpa.free(sp.neigh_cells);
+        sp.neigh_pos = try gpa.alloc([3]Fixed, capacity);
+        sp.neigh_mask = nb - 1;
+        return sp;
+    }
+
+    /// The neighbourhood: a uniform hash grid over the LIVE rows, rebuilt
+    /// once a tick at the tail of the serial spawn — the moment positions
+    /// are final for the tick and before the sweep reads them. It is not a
+    /// seventh phase, deliberately: the sweep must see one snapshot of where
+    /// everybody is, and the end of spawn is exactly that instant.
+    ///
+    /// Built only when a mounted kernel says `near`, so a spray that never
+    /// asks pays nothing.
+    fn buildNeighbourhood(self: *Spray) void {
+        if (!self.wants_neighbours) return;
+        const nb = self.neigh_starts.len - 1;
+        @memset(self.neigh_starts, 0);
+        const p = &self.pop;
+        // Counting sort by bucket: count, prefix, scatter. Two passes over
+        // the live rows and no allocation.
+        var id: u32 = 0;
+        while (id < p.capacity) : (id += 1) {
+            if (!p.alive[id]) continue;
+            self.neigh_pos[id] = .{ p.pos[0][id], p.pos[1][id], p.pos[2][id] };
+            self.neigh_cells[id] = .{ self.cellIndex(p.pos[0][id]), self.cellIndex(p.pos[1][id]), self.cellIndex(p.pos[2][id]) };
+            self.neigh_starts[self.bucketOf(id) + 1] += 1;
+        }
+        var acc: u32 = 0;
+        for (self.neigh_starts) |*c| {
+            const n = c.*;
+            c.* = acc;
+            acc += n;
+        }
+        var cursor = self.neigh_starts[1..];
+        _ = &cursor;
+        id = 0;
+        while (id < p.capacity) : (id += 1) {
+            if (!p.alive[id]) continue;
+            const b = self.bucketOf(id);
+            self.neigh_rows[self.neigh_starts[b + 1]] = id;
+            self.neigh_starts[b + 1] += 1;
+        }
+        _ = nb;
+    }
+
+    fn cellIndex(self: *const Spray, v: Fixed) i32 {
+        return @intCast(@divFloor(@as(i64, v), @as(i64, self.neigh_cell)));
+    }
+
+    fn bucketOf(self: *const Spray, id: u32) u32 {
+        const p = &self.pop;
+        const ix = self.cellIndex(p.pos[0][id]);
+        const iy = self.cellIndex(p.pos[1][id]);
+        const iz = self.cellIndex(p.pos[2][id]);
+        return self.bucketAt(ix, iy, iz);
+    }
+
+    fn bucketAt(self: *const Spray, ix: i32, iy: i32, iz: i32) u32 {
+        const h = (@as(u32, @bitCast(ix)) *% 73856093) ^ (@as(u32, @bitCast(iy)) *% 19349663) ^ (@as(u32, @bitCast(iz)) *% 83492791);
+        return h & self.neigh_mask;
+    }
+
+    /// Every live row within `radius` of row `r`, itself excluded, into
+    /// `out`. The 27 buckets around the row are searched, which is why a
+    /// radius larger than the cell is refused by `near` rather than quietly
+    /// missing the rows a wider ring would have held.
+    pub fn gatherNear(self: *const Spray, r: u32, radius: Fixed, out: []u32) struct { n: u32, crowded: bool } {
+        const r2 = fixed.mul(radius, radius);
+        const here = self.neigh_cells[r];
+        const cx = here[0];
+        const cy = here[1];
+        const cz = here[2];
+        var n: u32 = 0;
+        var crowded = false;
+        var dx: i32 = -1;
+        while (dx <= 1) : (dx += 1) {
+            var dy: i32 = -1;
+            while (dy <= 1) : (dy += 1) {
+                var dz: i32 = -1;
+                while (dz <= 1) : (dz += 1) {
+                    const cell = [3]i32{ cx + dx, cy + dy, cz + dz };
+                    const b = self.bucketAt(cell[0], cell[1], cell[2]);
+                    for (self.neigh_rows[self.neigh_starts[b]..self.neigh_starts[b + 1]]) |other| {
+                        if (other == r) continue;
+                        // Its cell, not just its bucket: see `neigh_cells`.
+                        if (!std.mem.eql(i32, &self.neigh_cells[other], &cell)) continue;
+                        var d2: i64 = 0;
+                        inline for (0..3) |a| {
+                            const d = self.neigh_pos[r][a] -% self.neigh_pos[other][a];
+                            d2 += @as(i64, fixed.mul(d, d));
+                        }
+                        if (d2 > @as(i64, r2)) continue;
+                        if (n >= out.len) {
+                            crowded = true;
+                            continue;
+                        }
+                        out[n] = other;
+                        n += 1;
+                    }
+                }
+            }
+        }
+        return .{ .n = n, .crowded = crowded };
+    }
+
+    /// A row's position as the neighbourhood saw it — the snapshot, not the
+    /// live store. `push` leans away from where things WERE this tick.
+    pub fn neighPos(self: *const Spray, id: u32) [3]Fixed {
+        return self.neigh_pos[id];
+    }
+
+    /// This row's slice of the per-chunk neighbour buffer.
+    pub fn neighBuf(self: *Spray, r: u32) []u32 {
+        const c = r / self.chunk;
+        return self.neigh_bufs[c * MAX_NEIGHBOURS ..][0..MAX_NEIGHBOURS];
     }
 
     pub fn deinit(self: *Spray) void {
         self.unmountKernel();
+        self.gpa.free(self.neigh_starts);
+        self.gpa.free(self.neigh_rows);
+        self.gpa.free(self.neigh_cells);
+        self.gpa.free(self.neigh_pos);
+        self.gpa.free(self.neigh_bufs);
         self.pop.deinit();
         self.gpa.free(self.chunk_steps);
         self.gpa.free(self.chunk_dirty);
@@ -421,6 +594,11 @@ pub const Spray = struct {
                 return error.Mount;
             }
         }
+        self.wants_neighbours = false;
+        for (prog.nodes.items) |*n| {
+            if (std.mem.eql(u8, reg.get(n.op).name, "near")) self.wants_neighbours = true;
+        }
+
         // `mount` borrows a pointer to the program; the Kernel owns both, so
         // build the kernel in place and mount against its own field.
         self.kernel = .{ .prog = prog, .rt = undefined };
@@ -495,7 +673,10 @@ pub const Spray = struct {
         try self.broadcastPhase(plane);
         try self.materialisePhase(&stats);
         self.spawnPhase(dt_ns, &stats);
+        self.crowded_rows = 0;
+        self.buildNeighbourhood(); // phase 3's tail: one snapshot of where everybody is
         try self.sweepPhase(dt, dt_ns, js, &stats);
+        stats.crowded = self.crowded_rows;
         self.reapPhase(&stats);
         self.castPhase(&stats);
         self.last = stats;
@@ -719,6 +900,10 @@ pub const Spray = struct {
             self.gpa.free(self.chunk_dirty);
             self.chunk_dirty = try self.gpa.alloc(bool, n_chunks);
             @memset(self.chunk_dirty, false);
+        }
+        if (self.neigh_bufs.len != n_chunks * MAX_NEIGHBOURS) {
+            self.gpa.free(self.neigh_bufs);
+            self.neigh_bufs = try self.gpa.alloc(u32, n_chunks * MAX_NEIGHBOURS);
         }
     }
 

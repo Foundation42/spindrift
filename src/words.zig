@@ -278,6 +278,74 @@ fn kSlide(ctx: *row.Ctx) row.Error!void {
     ctx.publish(0, .{ .scalar = fixed.ONE });
 }
 
+/// `near <radius>` — how many live rows are within `radius`, and (on the
+/// slate's HANDLE lane, under `crowd`) which ones.
+///
+/// The count is an ordinary number a kernel can use at once. The LIST is
+/// the thing no `Val` can hold — the row plane's arrays are literal-only
+/// and no operator emits one — so it goes on the slate as a native handle:
+/// a pointer into the spray's per-chunk buffer, valid for exactly this
+/// row's evaluation, which is the same lifetime the slate gives everything
+/// and the reason a raw pointer is safe there at all.
+///
+/// The neighbourhood is a hash grid over the live rows, rebuilt once a tick
+/// at the tail of the serial spawn — one snapshot of where everybody is,
+/// which is what keeps `near` row-local in the parallel sweep. A radius
+/// larger than the grid's cell is REFUSED rather than quietly missing the
+/// rows a wider ring would have held.
+///
+/// Read-aloud: "near half a cell, push four". Rejected: `neighbours` (a
+/// noun, and every other row word is a verb); `around` (reads as a
+/// rotation); `within` is rill's already and means a point in a box; `flock`
+/// names one customer of many.
+fn kNear(ctx: *row.Ctx) row.Error!void {
+    const s = try sprayOf(ctx);
+    const radius = try ctx.scalar(0);
+    var nb: [24]u8 = undefined;
+    if (radius <= 0) return ctx.refuse("{s}: radius {s} is not positive — a neighbourhood with no width is a question with no answer", .{ ctx.op.name, fixed.format(radius, &nb) });
+    if (radius > s.neigh_cell) {
+        var cb: [24]u8 = undefined;
+        return ctx.refuse("{s}: radius {s} is wider than the neighbourhood's cell {s} — only the 27 cells around a row are searched, so a wider radius would miss rows rather than find them; raise the cell", .{ ctx.op.name, fixed.format(radius, &nb), fixed.format(s.neigh_cell, &cb) });
+    }
+    const buf = s.neighBuf(ctx.row_index);
+    const got = s.gatherNear(ctx.row_index, radius, buf);
+    if (got.crowded) s.crowded_rows += 1;
+    ctx.publishHandle(0, .{ .ptr = @ptrCast(buf.ptr), .len = got.n });
+    ctx.out[0] = .{ .scalar = fixed.fromInt(@intCast(got.n)) };
+}
+
+/// `push <k>` — separation: lean away from everything `near` found, at `k`
+/// cells per second per cell of offset. `vel += Σ (pos − other) · k · dt`.
+///
+/// It reads the list off the slate rather than asking again, which is the
+/// whole point: the neighbourhood was already gathered this row, and a
+/// second gather would be the same answer at twice the price.
+///
+/// The falloff is the neighbourhood's own edge and nothing softer — a row
+/// just inside the radius pushes, one just outside does not, and the step
+/// across is a discontinuity. Recorded rather than smoothed: a customer
+/// that can see the seam is the trigger for a weight.
+fn kPush(ctx: *row.Ctx) row.Error!void {
+    const s = try sprayOf(ctx);
+    const k = try ctx.scalar(0);
+    const h = ctx.handle(0) orelse return; // `near` was quiet for this row
+    const ids: [*]const u32 = @ptrCast(@alignCast(h.ptr orelse return));
+    // The neighbourhood's SNAPSHOT positions, never the live store: the
+    // sweep integrates a row the moment its kernel is done, so a live read
+    // would lean away from where the earlier rows have already got to, and
+    // the answer would depend on the order the chunks happened to run in.
+    const mine = s.neighPos(ctx.row_index);
+    var sum: fixed.Vec = .{ 0, 0, 0 };
+    for (ids[0..h.len]) |other| {
+        const theirs = s.neighPos(other);
+        inline for (0..3) |a| sum[a] +%= mine[a] -% theirs[a];
+    }
+    const gain = fixed.mul(k, ctx.dt);
+    var out: fixed.Vec = undefined;
+    inline for (0..3) |a| out[a] = fixed.mul(sum[a], gain);
+    try ctx.write(.{ .field = population.F_VEL }, .add, .{ .vec3 = out });
+}
+
 /// The tracer words — a host with a `World` registers these beside the
 /// core; a host without leaves a kernel that names one to refuse at mount.
 pub const TRACER = [_]rill.OpDef{
@@ -374,6 +442,27 @@ pub const WORDS = [_]rill.OpDef{
         .class = .reads,
         .routes = .anywhere,
         .row = rowOnly(kRelax),
+        .eval = planeRefuse,
+    },
+    .{
+        .name = "near",
+        .inputs = &.{.{ .name = "radius", .ty = Tag.number }},
+        .outputs = &.{.{ .name = "count", .ty = Tag.number }},
+        .help = "Row word: how many live rows are within `radius` — and which ones, on the slate's handle lane under `crowd`, for `push` to read. A radius wider than the neighbourhood's cell refuses by name.",
+        .class = .reads,
+        .routes = .anywhere,
+        .publishes = &.{"crowd"},
+        .row = rowOnly(kNear),
+        .eval = planeRefuse,
+    },
+    .{
+        .name = "push",
+        .inputs = &.{.{ .name = "k", .ty = Tag.number }},
+        .help = "Row word: separation — lean away from everything `near` found, `vel += sum(pos - other) * k * dt`. Reads the list off the slate rather than gathering it again. Needs a `near` above it.",
+        .class = .reads,
+        .routes = .anywhere,
+        .consumes = &.{"crowd"},
+        .row = rowOnly(kPush),
         .eval = planeRefuse,
     },
     .{
