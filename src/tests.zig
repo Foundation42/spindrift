@@ -929,6 +929,78 @@ test "smoke.rill: the shipped kernel parses and mounts on a spray that samples $
     try testing.expectEqual(@as(usize, 6), b.spray.kernel.?.prog.nodeCount());
 }
 
+
+test "relax: the step is the FED delta's — double the tick, double the step, exactly" {
+    // The reason `relax` is a word rather than three core ops. `(1 − x)·rate`
+    // is spellable without it, but only PER TICK; this is the claim that the
+    // rate is per SECOND, and it is exact in Q16.16 rather than approximate,
+    // because the step is linear in dt even though the relaxation is not.
+    //
+    // Mutation: the `· dt` dropped from the step — both ticks move the same
+    // and the word is per-tick again, which is the bug it was built to end.
+    // Mutation: `k` formed as rate·rate, or the gap taken as `x − target` —
+    // the halves stop being halves.
+    const gpa = testing.allocator;
+    var moved: [2]Fixed = undefined;
+    // Both runs share tick 1 exactly; only the SECOND tick's fed delta
+    // differs, so the difference in what moved is the difference in dt.
+    for ([2]u64{ std.time.ns_per_s, std.time.ns_per_s / 2 }, 0..) |second_dt, i| {
+        const b = try Bench.init(gpa, 4, 1);
+        defer b.deinit(gpa);
+        b.spray.knobs = .{ .rate = fixed.fromInt(1), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+        try b.mount("row.u0 | relax 1 0.5 | write row.u0 add\n");
+        try b.tick(0, 0);
+        try b.tick(1, std.time.ns_per_s); // born; one second fed, so u0 = 0.5
+        b.spray.knobs.rate = 0;
+        const before = b.spray.pop.userOf(0)[0];
+        try testing.expectEqual(fixed.HALF, before);
+        try b.tick(2, std.time.ns_per_s + second_dt);
+        try testing.expectEqual(@as(u32, 0), b.spray.last.refusals);
+        moved[i] = b.spray.pop.userOf(0)[0] - before;
+    }
+    // Half the tick, half the step — and the numbers themselves, so a
+    // mutation cannot pass by making both zero.
+    try testing.expectEqual(fixed.ONE / 4, moved[0]);
+    try testing.expectEqual(fixed.ONE / 8, moved[1]);
+    try testing.expectEqual(moved[0], moved[1] * 2);
+}
+
+test "relax: a rate that walks away from the target, or that closes more than the whole gap in a tick, refuses by name" {
+    // Loud, never a guess. Both are rates that do the OPPOSITE of the word:
+    // a negative one diverges, and one past the gap steps over the target.
+    // Mutation: either guard dropped — the refusal count stays 0 and the
+    // channel sails past 1 (or away from it) with the picture still moving.
+    const gpa = testing.allocator;
+    const cases = [_]struct { src: []const u8, refuses: bool }{
+        .{ .src = "row.u0 | relax 1 0.5 | write row.u0 add\n", .refuses = false }, // the control
+        .{ .src = "row.u0 | relax 1 -0.5 | write row.u0 add\n", .refuses = true }, // away
+        .{ .src = "row.u0 | relax 1 4 | write row.u0 add\n", .refuses = true }, // 4 · 1s = four gaps
+    };
+    for (cases) |c| {
+        const b = try Bench.init(gpa, 4, 1);
+        defer b.deinit(gpa);
+        b.spray.knobs = .{ .rate = fixed.fromInt(1), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+        try b.mount(c.src);
+        try b.tick(0, 0);
+        try b.tick(1, std.time.ns_per_s);
+        if (c.refuses) {
+            try testing.expect(b.spray.last.refusals > 0);
+            try testing.expectEqual(@as(Fixed, 0), b.spray.pop.userOf(0)[0]); // and nothing landed
+        } else {
+            try testing.expectEqual(@as(u32, 0), b.spray.last.refusals);
+        }
+    }
+    // The same rate that refuses at a one-second tick is fine at 16 ms:
+    // the guard is on the STEP, which is the fed delta's business.
+    const b = try Bench.init(gpa, 4, 1);
+    defer b.deinit(gpa);
+    b.spray.knobs = .{ .rate = fixed.fromInt(1), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+    try b.mount("row.u0 | relax 1 4 | write row.u0 add\n");
+    try b.tick(0, 0);
+    try b.tick(1, std.time.ns_per_s / 64);
+    try testing.expectEqual(@as(u32, 0), b.spray.last.refusals);
+}
+
 test "fire.rill: the appearance coordinate is the WORLD's, not the clock's — one kernel, one seed, one schedule, and only the floor differs" {
     // The manifold's customer scene (funideas §9, 2026-09-07). This kernel
     // writes NO colour: it writes a point in an appearance manifold, and
@@ -953,7 +1025,7 @@ test "fire.rill: the appearance coordinate is the WORLD's, not the clock's — o
     const knobs = [_]struct { []const u8, f64 }{
         .{ "cool", 0.05 },  .{ "plunge", 0.40 }, .{ "chill", 0.02 },
         .{ "smoke", 0.03 }, .{ "quench", 0.30 },
-        .{ "thin", 0.06 },  .{ "settle", -0.50 },
+        .{ "thin", 0.06 },  .{ "settle", 0.50 }, // a rate toward 0 now, not a negative multiplier
         .{ "puff", 0.30 },  .{ "grain", 0.06 },
     };
 

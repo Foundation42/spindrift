@@ -1248,3 +1248,48 @@ kernel, which exists. (ii) Two saturating factors in one flow — gating
 `thin` on being free wants `(1 − u2) · (1 − stuck)`, and a row cannot
 nest a sub-expression as an argument. Trigger: a second customer that
 wants it; one is a coincidence.
+
+
+**`relax`, 2026-09-07 (the eighth word; nothing in rill).** Built the same
+day its customer scene landed, which is the order the house rule asks for:
+`fire.rill` spelled `| mul -1 | add 1 | mul <rate>` seven times to say
+"approach", and the rates were PER TICK — correct at one dt and quietly
+wrong at every other. A kernel cannot say dt (`ctx.dt` is Zig's, there is
+no `row.dt`, and every stateful core op that would relax — `ease`, `ramp`
+— is not row-legal), so the word eats the fed delta and the knob is per
+second, exactly as `gravity`'s is cells per second².
+
+`relax <target> <rate>` emits the STEP, `(target − in) · rate · dt`, not
+the arrival. That is the design, not a convenience: a row's state is
+pushed by several things at once, and a word returning the new value could
+only ever be the LAST word to speak. A step composes under `write … add`,
+so the influences sum the way forces do — `fire.rill` has three of them on
+`cooled` alone. Two refusals, both loud: a NEGATIVE rate (divergence, not
+a slow relax) and `rate · dt > 1` (a step past the target; past two, away
+from it every tick). A clamp there would leave a kernel oscillating while
+the picture looked plausible, which is campaign 2's ruling 3 again.
+Read-aloud "u0, relax toward 1 at nine tenths a second"; rejected `decay`
+(only ever toward zero, and half these lines climb), `approach` (motion in
+space; this is a scalar), `cool` (one customer, not the operation),
+`toward` (wants a preposition it has not got); `ease`/`ramp` are rill's,
+on the plane and stateful.
+
+**Gates, two.** "the step is the FED delta's — double the tick, double the
+step, exactly": both runs share tick 1 and differ only in the second
+tick's fed delta, so ¼ and ⅛ are asserted as themselves as well as as a
+ratio (a mutation cannot pass by making both zero). Exact in Q16.16
+because the STEP is linear in dt even though the relaxation is not — which
+is also why the gate compares steps rather than two schedules' arrivals.
+"a rate that walks away, or that closes more than the whole gap in a tick,
+refuses by name", with the control beside it, and the tail that the same
+rate 4 which refuses at a one-second tick is fine at 16 ms: the guard is on
+the STEP, which is the fed delta's business. **Mutations, four, all
+bitten:** the `· dt` dropped; the gap taken backwards (`x − target`);
+either guard dropped.
+
+`fire.rill` rewritten onto it — two nodes a line where there were five,
+`settle` now a rate toward 0 rather than a negative multiplier, and the
+demo re-run knob-for-knob (×62.5, per tick to per second) lands the same
+picture: stuck cooled 0.982 / sooted 0.951 / thinned 0.063 against
+0.984 / 0.956 / 0.061 before. Its four mutations still bite, plus a new
+one the rewrite made spellable — `settle` relaxing toward 1 instead of 0.

@@ -15,13 +15,17 @@
 // HAPPENED to the row, never as what it has left. A newborn has no
 // history, and (0, 0, 0) is the flame.
 //
-// Every line has the same shape — `(1 − x) · rate`, an approach that
-// saturates — so no influence can drive a channel past 1 and no clamp
-// is needed to say so. They are all `write … add`, and a row's queued
-// adds land on the live value in order, so the influences SUM: the
-// baseline, plus whatever the world did. That is the whole trick. A
-// second cooling term is not a special case of the first, it is another
-// force on the same channel.
+// Every line is a `relax` — the step toward a target at a rate per
+// SECOND, which saturates, so no influence can drive a channel past its
+// target and no clamp is needed to say so. They are all `write … add`,
+// and a row's queued adds land on the live value in order, so the
+// influences SUM. That is the whole trick. A second cooling term is not
+// a special case of the first, it is another force on the same channel.
+//
+// The knobs are rates per second (`relax` eats the fed dt). The first
+// draft of this kernel spelled each line `| mul -1 | add 1 | mul <rate>`
+// and the rates were per TICK — correct at one dt and quietly wrong at
+// every other. That kernel is what `relax` was built for.
 
 spawn
 gravity plane.drift.@self.gravity
@@ -30,17 +34,17 @@ perish
 
 // -- cooled ------------------------------------------------------------
 // It cools on its own,
-row.u0 | mul -1 | add 1 | mul plane.drift.@self.cool | write row.u0 add
+row.u0 | relax 1 plane.drift.@self.cool | write row.u0 add
 // faster against something it landed on (the cold plate),
-row.u0 | mul -1 | add 1 | mul plane.drift.@self.plunge | mul row.stuck | write row.u0 add
+row.u0 | relax 1 plane.drift.@self.plunge | mul row.stuck | write row.u0 add
 // and faster once it is thin enough for the air to get at it.
-row.u0 | mul -1 | add 1 | mul plane.drift.@self.chill | mul row.u2 | write row.u0 add
+row.u0 | relax 1 plane.drift.@self.chill | mul row.u2 | write row.u0 add
 
 // -- sooted ------------------------------------------------------------
 // Carbon accumulates as it burns,
-row.u1 | mul -1 | add 1 | mul plane.drift.@self.smoke | write row.u1 add
+row.u1 | relax 1 plane.drift.@self.smoke | write row.u1 add
 // and a quench dumps it: incomplete combustion is what a soot mark IS.
-row.u1 | mul -1 | add 1 | mul plane.drift.@self.quench | mul row.stuck | write row.u1 add
+row.u1 | relax 1 plane.drift.@self.quench | mul row.stuck | write row.u1 add
 
 // -- thinned -----------------------------------------------------------
 // It spreads as it goes. (The knob is `thin`, not `spread`: a kernel's
@@ -48,9 +52,13 @@ row.u1 | mul -1 | add 1 | mul plane.drift.@self.quench | mul row.stuck | write r
 // one `spread` silently retuned the launch cone to 0.013 cells/s — the
 // mount line still printed the 1.6 the flag asked for, and every row
 // went straight up in a pencil. Named for the channel it drives.)
-row.u2 | mul -1 | add 1 | mul plane.drift.@self.thin | write row.u2 add
-// unless it is stuck to something, in which case it stays a dense mark.
-row.u2 | mul plane.drift.@self.settle | mul row.stuck | write row.u2 add
+row.u2 | relax 1 plane.drift.@self.thin | write row.u2 add
+// A stuck row is pulled back toward dense, so a soot mark stays a mark.
+// It does not reach zero: `thin` is not gated on being free, so the two
+// lines BALANCE at thin/(thin + settle) rather than cancelling. Gating
+// it would want two saturating factors in one flow, which a row cannot
+// spell today.
+row.u2 | relax 0 plane.drift.@self.settle | mul row.stuck | write row.u2 add
 
 // The row's SIZE is state too, not a curve: a thin row is a wide one.
 // (funideas §9 — the particle morphs its whole rendering model.)

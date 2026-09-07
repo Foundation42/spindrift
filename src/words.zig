@@ -97,6 +97,58 @@ fn kHear(ctx: *row.Ctx) row.Error!void {
     ctx.out[0] = if (want_grad) .{ .vec3 = lat.gradientAt(at) } else .{ .scalar = lat.sampleAt(at) };
 }
 
+
+/// `relax <target> <rate>` — the STEP that carries a value toward
+/// `target` at `rate` per second: `(target − in) · rate · dt`.
+///
+/// It emits the step, not the arrival, and that is the whole design. A
+/// row's state is pushed by several things at once — it cools on its own,
+/// faster against something cold, faster once the air gets at it — and a
+/// word that returned the new value could only ever be the LAST word to
+/// speak. A step composes: `write row.u0 add` lands each one on the live
+/// field in turn, so the influences sum the way forces do. `gravity` is
+/// the same shape, one field down.
+///
+/// `dt` is why it is a word at all. `(1 − x) · rate` can be spelled with
+/// core rill — `| mul -1 | add 1 | mul <rate>` — and `fire.rill` spelled
+/// it that way for a beat, but the rate is then PER TICK and the kernel is
+/// correct at one dt only. A kernel cannot say dt: `ctx.dt` is Zig's,
+/// there is no `row.dt`, and every stateful core op that would relax
+/// (`ease`, `ramp`) is not row-legal. So the word eats the fed delta and
+/// the knob is per second, like `gravity`'s cells per second².
+///
+/// Two refusals, both loud, because each is a rate that does the opposite
+/// of what the word says. A NEGATIVE rate walks away from the target —
+/// that is not a slow relax, it is divergence. A rate whose step exceeds
+/// the whole gap (`rate · dt > 1`) steps PAST the target and, past two,
+/// further away every tick; clamping it would leave a kernel oscillating
+/// while the picture looked plausible, which is campaign 2's ruling 3 the
+/// row-fields already answer with bounds. The dt in the test is the fed
+/// one, so a kernel tuned at 16 ms says so on the tick that is not.
+///
+/// Read-aloud: "u0, relax toward 1 at nine tenths a second." Rejected:
+/// `decay` (only ever toward zero, and half these lines climb); `approach`
+/// (reads as motion in space, and this is a scalar); `cool` (names one
+/// customer, not the operation); `toward` (wants a preposition it has not
+/// got); `ease` and `ramp` are rill's plane words and stateful — a
+/// different thing wearing a near name.
+fn kRelax(ctx: *row.Ctx) row.Error!void {
+    const x = try ctx.scalar(0);
+    const target = try ctx.scalar(1);
+    const rate = try ctx.scalar(2);
+    var nb: [24]u8 = undefined;
+    if (rate < 0) return ctx.refuse("{s}: rate {s} is negative — that walks away from the target, not toward it", .{ ctx.op.name, fixed.format(rate, &nb) });
+    // The fraction of the gap this tick closes. Formed FIRST so the guard
+    // reads the number it guards, and so the product that reaches the
+    // subtraction is the small one.
+    const k = fixed.mul(rate, ctx.dt);
+    if (k > fixed.ONE) {
+        var db: [24]u8 = undefined;
+        return ctx.refuse("{s}: rate {s} over a {s}s tick closes more than the whole gap — it would step past the target", .{ ctx.op.name, fixed.format(rate, &nb), fixed.format(ctx.dt, &db) });
+    }
+    ctx.out[0] = .{ .scalar = fixed.mul(target -% x, k) };
+}
+
 // `over` was spindrift's fifth word from beat 3 until rill took it into its
 // core (rill `23ac55c`, beat 5): the same spelling, `row.age | over row.life
 // [1, 0.7, 0]`, the same bits — clamped divide, segment by shift, fraction
@@ -228,6 +280,20 @@ pub const WORDS = [_]rill.OpDef{
         .class = .reads,
         .routes = .anywhere,
         .row = rowOnly(kPerish),
+        .eval = planeRefuse,
+    },
+    .{
+        .name = "relax",
+        .inputs = &.{
+            .{ .name = "in", .ty = Tag.number },
+            .{ .name = "target", .ty = Tag.number },
+            .{ .name = "rate", .ty = Tag.number },
+        },
+        .outputs = &.{.{ .name = "step", .ty = Tag.number }},
+        .help = "Row word: the STEP toward `target` at `rate` per second — (target - in) * rate * dt. It emits the step, not the arrival, so influences compose: `row.u0 | relax 1 0.9 | write row.u0 add`, and a second line adds another. A negative rate, or one that closes more than the gap in a tick, refuses by name.",
+        .class = .reads,
+        .routes = .anywhere,
+        .row = rowOnly(kRelax),
         .eval = planeRefuse,
     },
     .{
