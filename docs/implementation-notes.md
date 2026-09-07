@@ -1293,3 +1293,70 @@ demo re-run knob-for-knob (×62.5, per tick to per second) lands the same
 picture: stuck cooled 0.982 / sooted 0.951 / thinned 0.063 against
 0.984 / 0.956 / 0.061 before. Its four mutations still bite, plus a new
 one the rewrite made spellable — `settle` relaxing toward 1 instead of 0.
+
+
+**`slide`, and the mock's resume, 2026-09-07 (the ninth word).** The
+surface family's second half: `collide | slide | stick` — take the
+contact's normal OUT of the velocity and put the row on the surface, so
+what is left is the tangent and the row RUNS ALONG what it hit. Rain down
+a window, an ember down a sloped hearth, and a soot STREAK where `stick`
+alone leaves a dot, which is the manifold's next story because a sliding
+row keeps arriving somewhere new while it cools. Read-aloud "collide,
+slide, stick"; rejected `slip` (a failure, not a motion), `skid` (promises
+a friction this does not model — a frictionless slide on a flat floor runs
+for ever, and that is a thing you can see), `graze` (a near miss, the
+opposite), `tangent` (the plane, not the act), `deflect` (says bounce, and
+nothing here reflects).
+
+**It could not be built without overturning a prior decision, and
+Christian ruled that it should be** ("just because we did something,
+didn't mean it was right"). `Floor` said a segment starting BELOW it is
+"already through, no crossing" (beat 4, deliberate). But ruling 20's
+sliver puts rows there: `collide` tests `pos → pos + vel_start · dt` while
+the integrate moves by `vel_end · dt`, `g · dt²` further. For a fire that
+was 2.57% of embers tunnelling at 16 ms; for `slide` it is FATAL, because
+a sliding row sinks by exactly that sliver every tick — it slid once and
+was abandoned. So both mocks now do what the engine already does
+(`drift-words.md`, `collide`): a row found inside a surface is placed on
+the face it came through, at t = 0. The fire's tunnel went to 0.00% at
+16, 8 and 4 ms. It cost no frozen hash — spindrift freezes none, G0
+compares two runs to each other — which is the only reason this was a
+half-hour and not a campaign. Ruling 20's (B) is still open and still
+worth it: the resume BOUNDS the penetration at `g · dt²` and corrects it
+every tick, it does not remove it.
+
+New mock: `Plane` (any unit normal, `n · p = d`), kept BESIDE `Floor`
+rather than folded into it — every beat-4 gate is written against `Floor`'s
+exact answers and a mock rewritten under its own gates is a mock nobody
+checked. It exists because `slide` cannot be gated on a floor: there
+gravity is entirely normal, the tangent a slide leaves is the velocity the
+row already had, and a kernel that did NOTHING would pass.
+
+**Gates, two.** "the contact's normal leaves the velocity" — a wall,
+n = (1, 0, 0), exact in Q16.16, so equalities: the normal component is 0,
+the tangent untouched, the row on the surface. "it SUBTRACTS, so what it
+leaves still accelerates" — a 3-4-5 slope against a flat floor, run
+identically. **Mutations, five, all bitten:** the correction signed wrong;
+the row not placed at the contact; `Plane`'s resume dropped; `Floor`'s
+resume dropped; and `slide` REPLACING instead of subtracting.
+
+**The last of those is the one that taught something.** It SURVIVED the
+first cut of the gate, and the reason is a claim in the first draft of
+`slide`'s own comment that was simply false: that a replace would lose
+`gravity`'s add and a row on a slope would never accelerate. It does
+accelerate — in STAIR-STEPS, holding a velocity for several ticks and
+jumping on the one where it has sunk far enough for a real crossing rather
+than a resume (−1.44, −1.44, −1.44, −1.44, −1.68, −1.68 against a clean
+−1.44, −1.68, −1.92, …). Three samples straddled a step. The gate now
+takes six and asserts the increments are equal to within ONE ulp — the
+step is the tangential gravity times dt = 0.24 cells/s, which is 15728.64
+in Q16.16, so the rounding lands 15729 once and 15728 after; a plateau is
+a step of zero, 15728 ulps out. The comment and the manual were corrected
+to what the run says. Prose approved a plausible mechanism; the mutation
+approved the actual one.
+
+**Also found:** the slope gate's first cut asserted over a population of
+NONE. Four a second at a quarter-second tick is one row; a rate of 1/s is
+a quarter of one, and the rate was zeroed before it had been born. It
+failed loudly, which is the only reason it is not still passing quietly —
+the gate now asserts `live == 1` at the spawn tick and again at the end.

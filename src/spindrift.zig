@@ -47,6 +47,7 @@ pub const Population = population.Population;
 pub const Handle = population.Handle;
 pub const World = world.World;
 pub const Floor = world.Floor;
+pub const Plane = world.Plane;
 pub const Nowhere = world.Nowhere;
 pub const Fields = fields.Fields;
 pub const MockFields = fields.MockFields;

@@ -930,6 +930,122 @@ test "smoke.rill: the shipped kernel parses and mounts on a spray that samples $
 }
 
 
+
+test "slide: the contact's normal leaves the velocity — what is left is the tangent, and the row is on the surface" {
+    // `slide` cannot be gated on a floor: there gravity is entirely normal,
+    // so the tangent a slide leaves is the velocity the row already had and
+    // a kernel that did NOTHING would pass. A wall separates them, and
+    // n = (1, 0, 0) is exact in Q16.16, so this gate is equalities.
+    //
+    // Mutation: the correction added with the wrong sign — the normal
+    // component doubles instead of leaving (vel.x −4, not 0).
+    // Mutation: the whole velocity scaled instead of the normal part — the
+    // tangent moves, and it is asserted here for exactly that reason.
+    // Mutation: `pos ← at` dropped — the row is through the wall at −2.
+    const gpa = testing.allocator;
+    var reg = try tracerRegistry(gpa);
+    defer reg.deinit();
+    var mock = rill.MockPlane.init(gpa);
+    defer mock.deinit();
+    var wall = spindrift.Plane{ .n = .{ fixed.ONE, 0, 0 }, .d = 0 };
+    var spray = try Spray.init(gpa, 4, 1, wall.asWorld());
+    defer spray.deinit();
+    // Thrown at the wall from x = 2 and falling: (−2, −1, 0) cells/s.
+    spray.pos = .{ fixed.fromInt(2), fixed.fromInt(4), 0 };
+    spray.aim = .{ -fixed.ONE, -fixed.HALF, 0 };
+    spray.knobs = .{ .rate = fixed.fromInt(1), .speed = fixed.fromInt(2), .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+    var diag = rill.registry.Detail{};
+    try spray.mountKernel(&reg, "k", "spawn\ncollide | slide\n", &diag);
+    try spray.tick(.{ .frame = 0, .time_ns = 0 }, null, mock.asPlane());
+    try spray.tick(.{ .frame = 1, .time_ns = std.time.ns_per_s }, null, mock.asPlane());
+    spray.knobs.rate = 0;
+    // Born and launched; the move ends ON the plane, which is not a crossing.
+    try testing.expectEqual(@as(Fixed, 0), spray.pop.pos[0][0]);
+    try testing.expectEqual(-fixed.fromInt(2), spray.pop.vel[0][0]);
+    try spray.tick(.{ .frame = 2, .time_ns = 2 * std.time.ns_per_s }, null, mock.asPlane());
+    try testing.expectEqual(@as(u32, 0), spray.last.refusals);
+    // The normal component is gone, EXACTLY, and the tangent is untouched.
+    try testing.expectEqual(@as(Fixed, 0), spray.pop.vel[0][0]);
+    try testing.expectEqual(-fixed.ONE, spray.pop.vel[1][0]);
+    // And the row is on the wall, not through it.
+    try testing.expectEqual(@as(Fixed, 0), spray.pop.pos[0][0]);
+    try testing.expectEqual(fixed.Vec{ fixed.ONE, 0, 0 }, fixed.Vec{ spray.pop.normal[0][0], spray.pop.normal[1][0], spray.pop.normal[2][0] });
+}
+
+test "slide: it SUBTRACTS, so what it leaves still accelerates — a row on a slope gains speed and the same row on a floor does not" {
+    // The add-versus-replace decision, which is the whole design and which
+    // no equality gate can see. A replace would land the snapshot's tangent
+    // over the top of `gravity`'s add — queued from an earlier node — and
+    // the row would slide at a constant speed for ever.
+    //
+    // Mutation: `write row.vel` replace instead of add — the slope's row
+    // stops gaining and the two worlds agree, which is the bug exactly.
+    // Mutation: the correction dropped altogether — the row goes through
+    // the slope and the floor's control gains speed too.
+    const gpa = testing.allocator;
+    var reg = try tracerRegistry(gpa);
+    defer reg.deinit();
+    // A 3-4-5 slope and a flat floor, run identically. The slope's normal
+    // is unit to within a Q16.16 ulp, so this gate asserts ORDER, not
+    // equalities — the claim is "gains speed", not "gains this much".
+    var worlds = [2]spindrift.Plane{
+        .{ .n = .{ -fixed.fromRatio(6, 10), fixed.fromRatio(8, 10), 0 }, .d = 0 },
+        .{ .n = .{ 0, fixed.ONE, 0 }, .d = 0 },
+    };
+    var speeds: [2][6]Fixed = undefined;
+    for (&worlds, 0..) |*w, i| {
+        var mock = rill.MockPlane.init(gpa);
+        defer mock.deinit();
+        var spray = try Spray.init(gpa, 4, 1, w.asWorld());
+        defer spray.deinit();
+        spray.pos = .{ 0, fixed.fromInt(2), 0 };
+        // Four a second at a quarter-second tick is exactly one row on tick
+        // 1 — the rate is per SECOND and the tick is not, and the first cut
+        // of this gate zeroed a 1/s rate before a quarter of a row had been
+        // born. It asserted over a population of none and failed loudly,
+        // which is the only reason it is not still doing that quietly.
+        spray.knobs = .{ .rate = fixed.fromInt(4), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+        var diag = rill.registry.Detail{};
+        try spray.mountKernel(&reg, "k", "spawn\ngravity -2\ncollide | slide\n", &diag);
+        try spray.tick(.{ .frame = 0, .time_ns = 0 }, null, mock.asPlane());
+        var t: u64 = 1;
+        while (t <= 14) : (t += 1) {
+            try spray.tick(.{ .frame = t, .time_ns = t * std.time.ns_per_s / 4 }, null, mock.asPlane());
+            if (t == 1) {
+                try testing.expectEqual(@as(u32, 1), spray.pop.live);
+                spray.knobs.rate = 0;
+            }
+            if (t >= 9) speeds[i][t - 9] = @intCast(@abs(spray.pop.vel[0][0])); // the ACROSS-slope speed
+        }
+        try testing.expectEqual(@as(u32, 1), spray.pop.live);
+        try testing.expectEqual(@as(u32, 0), spray.last.refusals);
+    }
+    // On the slope the row runs downhill and gains on EVERY tick; on the
+    // floor gravity is entirely normal and there is nothing left to
+    // accelerate it. Every tick is the point, not the endpoints: the first
+    // cut of this gate sampled three and the replace mutation SURVIVED it,
+    // because a replace still gains — in stair-steps, on the ticks where
+    // the row happens to sink far enough for a real crossing rather than a
+    // resume (−1.44, −1.44, −1.44, −1.44, −1.68, −1.68 against a clean
+    // −1.44, −1.68, −1.92, …). Three samples straddled a step and the gate
+    // could not tell the two apart. Strict monotonicity over six can: a
+    // plateau is exactly what a replace has and a subtraction has not.
+    for (1..speeds[0].len) |k| try testing.expect(speeds[0][k - 1] < speeds[0][k]);
+    // And it is not merely increasing, it is increasing BY THE SAME AMOUNT
+    // — the tangential gravity times dt, once a tick, which is what "the
+    // rest still accelerates" means. A stair-step fails this before it
+    // fails monotonicity.
+    // Within ONE ulp, not equal: the step is the tangential gravity times
+    // dt = 0.24 cells/s, which is 15728.64 in Q16.16, so the rounding lands
+    // 15729 once and 15728 after. One ulp is the honest tolerance and it
+    // gives nothing away — a stair-step's plateau is a step of ZERO, which
+    // is 15728 ulps out, and its jump is twice the step.
+    const step = speeds[0][1] - speeds[0][0];
+    for (1..speeds[0].len) |k| try testing.expect(@abs((speeds[0][k] - speeds[0][k - 1]) - step) <= 1);
+    // The flat control never moves sideways at all.
+    for (speeds[1]) |s| try testing.expectEqual(@as(Fixed, 0), s);
+}
+
 test "relax: the step is the FED delta's — double the tick, double the step, exactly" {
     // The reason `relax` is a word rather than three core ops. `(1 − x)·rate`
     // is spellable without it, but only PER TICK; this is the claim that the

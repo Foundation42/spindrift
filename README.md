@@ -91,11 +91,11 @@ tick, and two runs with the same flags print the same digest.
 |---|---|
 | `src/fixed.zig` | Q16.16 — the sim's one number |
 | `src/population.zig` | SoA rows, freelist, `(id, gen)` handles, the row plane a kernel mounts on |
-| `src/world.zig` | `World` vtable — `collide` (segment → hit point, normal, t, material) and `ground`; `Floor` and `Nowhere` (the negative control) |
+| `src/world.zig` | `World` vtable — `collide` (segment → hit point, normal, t, material) and `ground`; `Floor`, `Plane` (any unit normal — a wall or a slope, which is what `slide` needs, since on a flat floor gravity is entirely normal and a slide has nothing to show) and `Nowhere` (the negative control). A segment starting INSIDE a surface is a row put back on the face it came through, as the engine does — the mock said "already through" until 2026-09-07 and a tunnelled row fell for ever |
 | `src/dump.zig` | one canonical struple map per population |
 | `src/fields.zig` | the `Fields` host interface, the engine's kernel, the mock store and its cast door |
 | `src/spray.zig` | knobs, the six-phase tick, kernel mount, lattices, the aggregate cast, what the spray says |
-| `src/words.zig` | `spawn`, `gravity`, `perish`, `hear` — row words registered into rill (`over`, the fifth from beat 3, is rill's core word since rill `23ac55c`); `collide`, `ground`, `stick` — the TRACER table a host with a World registers (`stick` lands the row at the contact and stores `row.normal`; the appearance draws it at pos + normal × size; the normal rides the pipe by name) |
+| `src/words.zig` | `spawn`, `gravity`, `perish`, `hear` — row words registered into rill (`over`, the fifth from beat 3, is rill's core word since rill `23ac55c`); `collide`, `ground`, `slide`, `stick` — the TRACER table a host with a World registers (`stick` lands the row at the contact and stores `row.normal`; the appearance draws it at pos + normal × size; the normal rides the pipe by name; `slide` takes the normal OUT of the velocity and leaves the tangent, so a row runs along what it hit — `collide | slide | stick`) |
 | `src/scheduler.zig` | the row-steps budget over sprays: `plan` by staleness, frustum, dynamic, index — the first always runs |
 | `kernels/embers.rill`, `kernels/smoke.rill`, `kernels/fire.rill` | the kernels; embers is `drift-run`'s default. `fire` writes no colour — it writes a point in an APPEARANCE MANIFOLD (`row.u0`–`u2`: cooled, sooted, thinned) that a renderer reads an RBF set at, so a landed ember quenches to soot and a flying one blows thin, from one file and one kernel |
 | `docs/drift-words.md` | the words manual, parity-gated both ways |

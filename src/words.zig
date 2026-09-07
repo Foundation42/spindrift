@@ -209,6 +209,63 @@ fn kStick(ctx: *row.Ctx) row.Error!void {
     try ctx.write(.{ .field = population.F_STUCK }, .replace, .{ .scalar = fixed.ONE });
 }
 
+/// `slide` — take the contact's normal OUT of the row's velocity, and put
+/// the row on the surface: `vel −= (n · vel) n`, `pos ← at`. What is left
+/// is the tangent, so the row runs along what it hit instead of stopping
+/// on it. `collide | slide | stick` is the whole life of an ember on a
+/// sloped hearth in one breath.
+///
+/// It SUBTRACTS rather than replacing, and that is the same choice `relax`
+/// made an hour earlier for the same reason: as an add it composes, so
+/// gravity pulls, the wind pushes, and `slide` removes only the part of
+/// the RESULT that would go through the wall.
+///
+/// The first draft of this comment said a replace would lose `gravity`'s
+/// add — queued from an earlier node — and that a row on a slope would
+/// therefore never accelerate. Running the mutation says otherwise, and
+/// the truth is more interesting: a replaced row DOES gain speed, in
+/// STAIR-STEPS — it holds a velocity for several ticks and jumps on the
+/// one where it has sunk far enough for a real crossing rather than a
+/// resume (−1.44, −1.44, −1.44, −1.44, −1.68, −1.68 against a clean
+/// −1.44, −1.68, −1.92, …). So the acceleration under a replace is a
+/// function of the tick rate and the geometry; under an add it is
+/// 0.24 cells/s per tick, which is the tangential gravity times dt, every
+/// tick and by construction. The gate had to be sharpened to say that —
+/// three samples straddled a step and the mutation survived them.
+///
+/// The correction is computed from the tick's snapshot, so it lags a tick
+/// exactly as `collide`'s segment does (ruling 20) — one rule, already
+/// written down. The row therefore ends each tick a sliver INSIDE the
+/// surface, by that same `g · dt²`, and is put back on it next tick by the
+/// world's resume. Without that resume `slide` cannot work at all: the
+/// row sinks on its first contact and the old mock abandoned it there.
+///
+/// The normal is taken to be UNIT, as every `World` answers it. Nothing
+/// here checks that: a host that returns a longer one scales the
+/// correction by |n|² and over-corrects, which is the host's bug and would
+/// cost a square root at every row to catch.
+///
+/// Read-aloud: "collide, slide, stick." Rejected: `slip` (reads as a
+/// failure, not a motion); `skid` (promises a friction this does not
+/// model — a frictionless slide on a flat floor runs for ever, and that is
+/// a thing you can see); `graze` (a near miss, the opposite); `tangent`
+/// (names the plane, not the act); `deflect` (says bounce, and nothing
+/// here reflects).
+fn kSlide(ctx: *row.Ctx) row.Error!void {
+    const s = try sprayOf(ctx);
+    const p = &s.pop;
+    const r = ctx.row_index;
+    const at = try ctx.vec3(0);
+    const n = try ctx.vec3(1);
+    const v: fixed.Vec = .{ p.vel[0][r], p.vel[1][r], p.vel[2][r] };
+    const vn = fixed.mul(n[0], v[0]) +% fixed.mul(n[1], v[1]) +% fixed.mul(n[2], v[2]);
+    var back: fixed.Vec = undefined;
+    inline for (0..3) |a| back[a] = -fixed.mul(n[a], vn);
+    try ctx.write(.{ .field = population.F_POS }, .replace, .{ .vec3 = at });
+    try ctx.write(.{ .field = population.F_NORMAL }, .replace, .{ .vec3 = n });
+    try ctx.write(.{ .field = population.F_VEL }, .add, .{ .vec3 = back });
+}
+
 /// The tracer words — a host with a `World` registers these beside the
 /// core; a host without leaves a kernel that names one to refuse at mount.
 pub const TRACER = [_]rill.OpDef{
@@ -236,6 +293,15 @@ pub const TRACER = [_]rill.OpDef{
         .class = .reads,
         .routes = .anywhere,
         .row = rowOnly(kGround),
+        .eval = planeRefuse,
+    },
+    .{
+        .name = "slide",
+        .inputs = &.{ .{ .name = "at", .ty = Tag.any }, .{ .name = "normal", .ty = Tag.any } },
+        .help = "Row word: take the contact's normal out of the row's velocity and put the row on the surface — vel -= (n * vel) n, pos <- at. What is left is the tangent, so the row runs along what it hit. Subtracts rather than replaces, so gravity and the wind still compose. `collide | slide | stick`.",
+        .class = .reads,
+        .routes = .anywhere,
+        .row = rowOnly(kSlide),
         .eval = planeRefuse,
     },
     .{
