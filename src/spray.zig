@@ -324,6 +324,14 @@ pub const Spray = struct {
     /// chunking is no order at all. One snapshot, taken once, read by
     /// everybody: the same rule the lattices already follow.
     neigh_pos: [][3]Fixed = &.{},
+    /// Each live row's USER CHANNELS as of the build. A word that reads a
+    /// neighbour's state — `sync` reads its phase — must read the snapshot
+    /// for the same reason `push` reads snapshot positions: a kernel's
+    /// writes land at the end of that row's evaluation, so row 1 would see
+    /// row 0's NEW phase and row 0 would see row 1's old one. The coupling
+    /// would then depend on the sweep order, which under chunking is no
+    /// order at all.
+    neigh_user: []Fixed = &.{},
     /// `buckets − 1`. Kept rather than derived: the first draft masked with
     /// `starts.len − 2`, which is `buckets` itself, so every row landed in
     /// one of two buckets.
@@ -383,6 +391,8 @@ pub const Spray = struct {
         sp.neigh_cells = try gpa.alloc([3]i32, capacity);
         errdefer gpa.free(sp.neigh_cells);
         sp.neigh_pos = try gpa.alloc([3]Fixed, capacity);
+        errdefer gpa.free(sp.neigh_pos);
+        sp.neigh_user = try gpa.alloc(Fixed, @as(usize, capacity) * population.USER_CHANNELS);
         sp.neigh_mask = nb - 1;
         return sp;
     }
@@ -406,6 +416,7 @@ pub const Spray = struct {
         while (id < p.capacity) : (id += 1) {
             if (!p.alive[id]) continue;
             self.neigh_pos[id] = .{ p.pos[0][id], p.pos[1][id], p.pos[2][id] };
+            @memcpy(self.neigh_user[@as(usize, id) * population.USER_CHANNELS ..][0..population.USER_CHANNELS], p.userOf(id));
             self.neigh_cells[id] = .{ self.cellIndex(p.pos[0][id]), self.cellIndex(p.pos[1][id]), self.cellIndex(p.pos[2][id]) };
             self.neigh_starts[self.bucketOf(id) + 1] += 1;
         }
@@ -493,6 +504,11 @@ pub const Spray = struct {
         return self.neigh_pos[id];
     }
 
+    /// A row's user channel as the neighbourhood saw it.
+    pub fn neighUser(self: *const Spray, id: u32, ch: u16) Fixed {
+        return self.neigh_user[@as(usize, id) * population.USER_CHANNELS + ch];
+    }
+
     /// This row's slice of the per-chunk neighbour buffer.
     pub fn neighBuf(self: *Spray, r: u32) []u32 {
         const c = r / self.chunk;
@@ -505,6 +521,7 @@ pub const Spray = struct {
         self.gpa.free(self.neigh_rows);
         self.gpa.free(self.neigh_cells);
         self.gpa.free(self.neigh_pos);
+        self.gpa.free(self.neigh_user);
         self.gpa.free(self.neigh_bufs);
         self.pop.deinit();
         self.gpa.free(self.chunk_steps);

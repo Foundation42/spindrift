@@ -1,0 +1,26 @@
+// motes — bioluminescent particles that entrain. funideas §6's
+// `synchronise`, and the thing it promises: "thousands of bioluminescent
+// particles whose emission phases gradually synchronise locally. You'd get
+// travelling waves of light emerging almost accidentally."
+//
+// Nothing here makes a wave. Every row is a lone oscillator with its own
+// natural frequency and a whisper of coupling to whatever is within reach.
+// The wave is what a FIELD of them does.
+//
+//   row.u0  phase    [0, 1), what the renderer lights
+//   row.u1  drift    this row's own frequency, cycles a second
+//   row.u3  crowd    how many rows are in reach (a diagnostic)
+
+spawn
+perish
+
+// The frequency has a gradient along x — the far end of the cloud runs
+// faster than the near end — plus a per-row jitter, because `row.seed` is
+// already a uniform in [0, 1) and disorder is what the coupling has to
+// beat. A gradient alone would be a wave nobody had to work for.
+row.pos.x | mul plane.drift.@self.k.slope | add plane.drift.@self.k.base | write row.u1
+row.seed | mul plane.drift.@self.k.jitter | write row.u1 add
+
+// Who is close, and lean toward them.
+near plane.drift.@self.k.reach | write row.u3
+sync row.u0 row.u1 plane.drift.@self.k.couple

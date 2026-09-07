@@ -1221,6 +1221,91 @@ test "near/push: a row leans away from the rows around it, a row alone does not 
 }
 
 
+
+test "sync: two coupled rows meet at their mean exactly, an uncoupled pair does not move, and the phase wraps" {
+    // funideas §6's `synchronise`, and the thing a field of them does is
+    // travelling waves. The claim gated here is the single step, because
+    // that is what can be asserted exactly: half the coupling closes half
+    // the gap, from both ends, so the pair lands on the MEAN.
+    //
+    // Mutation: neighbours' phases read live instead of from the snapshot —
+    // row 0 moves first, row 1 then sees the moved one, and the pair no
+    // longer meets. Symmetry is what a half-updated world destroys, and it
+    // is the same bug `push` had.
+    // Mutation: `wrapHalf` dropped — a pair either side of the wrap sprints
+    // the long way round instead of meeting across it.
+    // Mutation: the wrap into [0, 1) dropped — the phase walks off past 1.
+    const gpa = testing.allocator;
+    const b = try Bench.init(gpa, 8, 1);
+    defer b.deinit(gpa);
+    b.spray.knobs = .{ .rate = fixed.fromInt(2), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+    try b.mount("near 0.9 | write row.u3\nsync row.u0 row.u1 plane.drift.@self.k.couple\n");
+    try b.tick(0, 0);
+    try b.tick(1, std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 2), b.spray.pop.live);
+    b.spray.knobs.rate = 0;
+    const p = &b.spray.pop;
+
+    // Half a cell apart, phases an eighth and three-eighths — both exact in
+    // Q16.16, so the meeting point is exact too. No drift: coupling only.
+    const setup = struct {
+        fn go(pp: anytype) void {
+            pp.pos[0][0] = 0;
+            pp.pos[0][1] = fixed.HALF;
+            inline for (.{ 1, 2 }) |a| {
+                pp.pos[a][0] = 0;
+                pp.pos[a][1] = 0;
+            }
+            pp.userOf(0)[0] = fixed.ONE / 8;
+            pp.userOf(1)[0] = 3 * (fixed.ONE / 8);
+            pp.userOf(0)[1] = 0;
+            pp.userOf(1)[1] = 0;
+        }
+    }.go;
+
+    setup(p);
+    try b.mock.putValue("plane.drift.@em.k.couple", @as(f64, 0.5));
+    try b.tick(2, 2 * std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 0), b.spray.last.refusals);
+    // Half the coupling closes half the gap, from both ends: the mean.
+    try testing.expectEqual(fixed.ONE / 4, p.userOf(0)[0]);
+    try testing.expectEqual(fixed.ONE / 4, p.userOf(1)[0]);
+
+    // Uncoupled, they stay where they were put.
+    setup(p);
+    try b.mock.putValue("plane.drift.@em.k.couple", @as(f64, 0));
+    try b.tick(3, 3 * std.time.ns_per_s);
+    try testing.expectEqual(fixed.ONE / 8, p.userOf(0)[0]);
+    try testing.expectEqual(3 * (fixed.ONE / 8), p.userOf(1)[0]);
+
+    // Across the wrap, which is the whole reason `wrapHalf` exists: a
+    // fifteen-sixteenths and a one-sixteenth are an EIGHTH apart the short
+    // way and seven-eighths the long way. They meet at 0 — going forward and
+    // backward respectively — and without the wrap they would both trudge to
+    // 0.5 instead, which is the mutation.
+    setup(p);
+    p.userOf(0)[0] = 15 * (fixed.ONE / 16);
+    p.userOf(1)[0] = fixed.ONE / 16;
+    try b.mock.putValue("plane.drift.@em.k.couple", @as(f64, 0.5));
+    // Consecutive ticks: the first cut skipped a frame here and the fed dt
+    // was two seconds, so every step doubled and the pair sailed past each
+    // other. `relax` and `sync` both scale by the FED delta, which is the
+    // point of them, and a gate that changes it by accident is testing a
+    // different program.
+    try b.tick(4, 4 * std.time.ns_per_s);
+    try testing.expectEqual(@as(Fixed, 0), p.userOf(0)[0]);
+    try testing.expectEqual(@as(Fixed, 0), p.userOf(1)[0]);
+
+    // And drift advances the phase and wraps it: 0.875 + 0.25 is 0.125.
+    setup(p);
+    p.userOf(0)[0] = 7 * (fixed.ONE / 8);
+    p.userOf(0)[1] = fixed.ONE / 4;
+    p.userOf(1)[1] = fixed.ONE / 4;
+    try b.mock.putValue("plane.drift.@em.k.couple", @as(f64, 0));
+    try b.tick(5, 5 * std.time.ns_per_s);
+    try testing.expectEqual(fixed.ONE / 8, p.userOf(0)[0]);
+}
+
 test "the neighbourhood at scale: every count is what the geometry says, and the rows are spread across the buckets" {
     // A 4x4x4 lattice at half-cell spacing. Two mutations survived a
     // three-row scene and needed this one, which is the chunking gate's rule
@@ -1548,7 +1633,7 @@ test "over: a value over normalised life is piecewise linear over the knots, exa
     try testing.expectEqual(fixed.ONE / 4, b.spray.pop.size[0]);
     try b.tick(5, 5 * std.time.ns_per_s); // t = 1 → the last knot; past life it stays there
     try testing.expectEqual(@as(Fixed, 0), b.spray.pop.size[0]);
-    try b.tick(6, 6 * std.time.ns_per_s);
+    try b.tick(5, 5 * std.time.ns_per_s);
     try testing.expectEqual(@as(Fixed, 0), b.spray.pop.size[0]);
 }
 

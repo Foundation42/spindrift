@@ -1501,3 +1501,59 @@ and nothing softer — a row just inside pushes, one just outside does not,
 and the step across is a discontinuity. Trigger: a customer that can see
 the seam. And the rest of funideas §6 — cohesion, alignment, `infect`,
 `synchronise` — all of which now have the machinery and want only a scene.
+
+
+**`sync`, 2026-09-07 (the thirteenth word).** funideas §6's `synchronise`,
+and Christian's ask: *"let's get those travelling waves of light"*. A phase
+oscillator that listens to the rows `near` found —
+`phase += (drift + couple · mean(wrap(other − phase))) · dt`, wrapped into
+[0, 1). To ENTRAIN, which is the word for what it does and the one the
+manual keeps; `sync` is what anybody says out loud.
+
+The coupling is the phase difference itself and not its sine: the sawtooth
+oscillator rather than Kuramoto proper. It entrains the same way and is
+exact in Q16.16, where a sine would want a table and would put a SECOND
+definition of `sin` in the ecosystem — the argument the RBF beat already
+made about `exp` this morning.
+
+Only a user channel may be synchronised, refused by name otherwise: a phase
+is the row's own state, and the user channels are what the neighbourhood
+snapshots. Which is the load-bearing part — neighbours' phases are read
+from the SNAPSHOT, so the spray now copies the user channels beside the
+positions at build. A live read would have row 1 seeing row 0's new phase
+and row 0 seeing row 1's old one: Gauss-Seidel where the sweep promises
+Jacobi, and an answer depending on the order chunks happened to run in.
+Second time today the same bug tried to happen, and the second time the
+same gate shape caught it.
+
+Two refusals, both `relax`'s: a NEGATIVE coupling (that drives neighbours
+apart, which is a different word) and `couple · dt > 1` (the pull is at
+most half a turn, so that steps past what it was leaning toward).
+
+**Gate:** "two coupled rows meet at their mean exactly" — half the coupling
+closes half the gap from both ends, so an eighth and three-eighths land on
+a quarter, exactly, in Q16.16. Then an uncoupled pair that does not move; a
+pair either side of the WRAP that meets at 0 going opposite ways; and drift
+advancing and wrapping. **Mutations three, all bitten:** neighbour phases
+read live; `wrapHalf` dropped; the wrap into [0, 1) dropped.
+
+**Two things the gate taught, both mine.** The wrap case was missing at
+first, so `wrapHalf` dropped SURVIVED — a pair an eighth apart never
+crosses the seam the function exists for. And the wrap case then failed on
+correct code because its tick skipped a frame: the fed delta was two
+seconds, every step doubled, and the pair sailed past each other. `relax`
+and `sync` both scale by the fed delta, which is the whole point of them,
+so a gate that changes it by accident is testing a different program. A
+third mutation — the row's OWN phase read live — does not bite and is
+recorded as not biting: nothing has written that row's phase when its
+kernel runs, so the two reads are the same number, and the snapshot is
+chosen for uniformity rather than correctness.
+
+**Seen running.** `kernels/motes.rill`: 5600 rows, a frequency gradient
+along x plus per-row jitter from `row.seed`, reach 0.75, coupling 6. The
+order parameter says it plainly — global R = 0.468 while the x-slabs run
+0.35 to 0.89, and the mean phase ramps 0.29 → 0.59 → 0.81 → 0.39 → 0.61
+across the cloud and wraps. Local coherence far above global, with a
+spatial phase ramp, is a travelling wave and nothing else. Nothing in the
+kernel makes a wave; every row is a lone oscillator that can see about
+forty neighbours.

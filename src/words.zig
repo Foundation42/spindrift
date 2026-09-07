@@ -346,6 +346,85 @@ fn kPush(ctx: *row.Ctx) row.Error!void {
     try ctx.write(.{ .field = population.F_VEL }, .add, .{ .vec3 = out });
 }
 
+/// The signed way round: a phase difference in (−1, 1) brought into
+/// [−0.5, 0.5), so two rows either side of the wrap pull toward each other
+/// the SHORT way rather than sprinting the long way round.
+fn wrapHalf(d: Fixed) Fixed {
+    if (d > fixed.HALF) return d -% fixed.ONE;
+    if (d < -fixed.HALF) return d +% fixed.ONE;
+    return d;
+}
+
+/// `sync <row.uN> <drift> <couple>` — a phase oscillator that listens to
+/// the rows `near` found. Each tick the phase advances by its own `drift`
+/// and leans toward the average of its neighbours':
+///
+///     phase += (drift + couple · mean(wrap(other − phase))) · dt
+///
+/// and wraps into [0, 1). Give every row a slightly different `drift` (from
+/// `row.seed`, say) and a local `couple`, and neighbours entrain while
+/// distant ones do not — which is where travelling waves come from. Nothing
+/// here makes a wave; the wave is what a field of these DOES.
+///
+/// The coupling is the phase difference itself, not its sine — the sawtooth
+/// oscillator rather than Kuramoto proper. It entrains the same way, and it
+/// is exact in Q16.16 where a sine would need a table and would put a
+/// second definition of `sin` in the ecosystem.
+///
+/// Neighbours' phases are read from the neighbourhood's SNAPSHOT, never the
+/// live store. A kernel's writes land at the end of that row's evaluation,
+/// so a live read would have row 1 seeing row 0's new phase and row 0
+/// seeing row 1's old one — Gauss-Seidel where the sweep promises Jacobi,
+/// and an answer that depends on the order chunks happened to run in.
+///
+/// Only a user channel may be synchronised: a phase is the row's own state,
+/// and the user channels are what the neighbourhood snapshots. Anything
+/// else refuses by name rather than reading a stale field quietly.
+///
+/// Read-aloud: "sync row.u0, drifting at row.u1, coupled at 3." Rejected:
+/// `entrain` (the right word and the obscure one — kept in the manual as
+/// what this means); `phase` (a noun, where every row word is a verb);
+/// `couple` (names the parameter, not the act); `chorus` (lovely, and says
+/// nothing about what it does).
+fn kSync(ctx: *row.Ctx) row.Error!void {
+    const s = try sprayOf(ctx);
+    const wr = ctx.write_ref orelse return ctx.refuse("{s}: needs the field to synchronise — `sync row.u0 <drift> <couple>`", .{ctx.op.name});
+    if (wr.ref.field < population.F_U0 or wr.ref.field >= population.F_U0 + population.USER_CHANNELS) {
+        return ctx.refuse("{s}: only a user channel can be synchronised (row.u0 … row.u3) — a phase is the row's own state, and the user channels are what the neighbourhood snapshots", .{ctx.op.name});
+    }
+    const ch: u16 = wr.ref.field - population.F_U0;
+    const drift = try ctx.scalar(0);
+    const couple = try ctx.scalar(1);
+    var nb: [24]u8 = undefined;
+    if (couple < 0) return ctx.refuse("{s}: coupling {s} is negative — that drives neighbours APART, which is a different word", .{ ctx.op.name, fixed.format(couple, &nb) });
+    // The same guard `relax` carries, for the same reason: the pull is at
+    // most half a turn, so `couple · dt > 1` steps past the neighbours it
+    // was leaning toward and, past two, further away every tick. A clamp
+    // would leave a field of oscillators juddering while the picture moved.
+    if (fixed.mul(couple, ctx.dt) > fixed.ONE) {
+        var db: [24]u8 = undefined;
+        return ctx.refuse("{s}: coupling {s} over a {s}s tick closes more than the whole gap — it would step past the neighbours it is leaning toward", .{ ctx.op.name, fixed.format(couple, &nb), fixed.format(ctx.dt, &db) });
+    }
+    // The row's own phase, from the snapshot too. This one is not a
+    // correctness choice — nothing has written this row's phase yet when its
+    // kernel runs, so the live value and the snapshot are the same number,
+    // and the mutation that swaps them does not bite. It reads the snapshot
+    // so that every phase in the expression comes from one place.
+    const mine = s.neighUser(ctx.row_index, ch);
+    var pull: Fixed = 0;
+    if (ctx.handle(0)) |h| {
+        if (h.ptr) |ptr| if (h.len > 0) {
+            const ids: [*]const u32 = @ptrCast(@alignCast(ptr));
+            var sum: i64 = 0;
+            for (ids[0..h.len]) |other| sum += wrapHalf(s.neighUser(other, ch) -% mine);
+            pull = @intCast(@divTrunc(sum, @as(i64, @intCast(h.len))));
+        };
+    }
+    const step = fixed.mul(drift +% fixed.mul(couple, pull), ctx.dt);
+    const next: Fixed = @intCast(@mod(@as(i64, mine) + @as(i64, step), @as(i64, fixed.ONE)));
+    try ctx.write(wr.ref, .replace, .{ .scalar = next });
+}
+
 /// The tracer words — a host with a `World` registers these beside the
 /// core; a host without leaves a kernel that names one to refuse at mount.
 pub const TRACER = [_]rill.OpDef{
@@ -463,6 +542,17 @@ pub const WORDS = [_]rill.OpDef{
         .routes = .anywhere,
         .consumes = &.{"crowd"},
         .row = rowOnly(kPush),
+        .eval = planeRefuse,
+    },
+    .{
+        .name = "sync",
+        .statics = &.{.{ .name = "field", .kind = .path }},
+        .inputs = &.{ .{ .name = "drift", .ty = Tag.number }, .{ .name = "couple", .ty = Tag.number } },
+        .help = "Row word: a phase oscillator that listens to the rows `near` found — `phase += (drift + couple * mean(wrap(other - phase))) * dt`, wrapped into [0, 1). Only a user channel; neighbours' phases come from the neighbourhood's snapshot. Needs a `near` above it. `sync row.u0 row.u1 3`.",
+        .class = .reads,
+        .routes = .anywhere,
+        .consumes = &.{"crowd"},
+        .row = rowOnly(kSync),
         .eval = planeRefuse,
     },
     .{
