@@ -388,6 +388,63 @@ fn wrapHalf(d: Fixed) Fixed {
 /// what this means); `phase` (a noun, where every row word is a verb);
 /// `couple` (names the parameter, not the act); `chorus` (lovely, and says
 /// nothing about what it does).
+/// `infect row.uN <rate>` — a row CATCHES a channel from whoever `near`
+/// found that has more of it. funideas §6: *"transfer a state variable
+/// between neighbours. Now you've got spreading fire, bioluminescence,
+/// chemical reactions, disease, magic, whatever."*
+///
+/// It reads the neighbours' MAXIMUM, not their mean. A mean is diffusion —
+/// which is `relax` toward a neighbour average, and smears a peak into a
+/// haze; a maximum is transmission, and it makes a FRONT. Watching a front
+/// cross a cloud is the thing this word is for.
+///
+/// And it is MONOTONE: a row surrounded by cleaner rows does not get
+/// cleaner. You catch it from somebody who has more. Recovery is a separate
+/// fact with a separate rate, and `relax 0 <rate>` is already the word for
+/// it — so an epidemic is two lines, and the balance between the two rates
+/// is the threshold between a thing that spreads and a thing that dies out.
+/// Writing that as one word with two rates would have hidden exactly the
+/// number worth playing with.
+///
+/// Adds its step rather than replacing, unlike `sync`, so it composes with
+/// the recovery line and with anything else the kernel does to the channel.
+fn kInfect(ctx: *row.Ctx) row.Error!void {
+    const s = try sprayOf(ctx);
+    const wr = ctx.write_ref orelse return ctx.refuse("{s}: needs the field that spreads — `infect row.u0 <rate>`", .{ctx.op.name});
+    if (wr.ref.field < population.F_U0 or wr.ref.field >= population.F_U0 + population.USER_CHANNELS) {
+        return ctx.refuse("{s}: only a user channel can be caught (row.u0 … row.u3) — what spreads is the row's own state, and the user channels are what the neighbourhood snapshots", .{ctx.op.name});
+    }
+    const ch: u16 = wr.ref.field - population.F_U0;
+    const rate = try ctx.scalar(0);
+    var nb: [24]u8 = undefined;
+    if (rate < 0) return ctx.refuse("{s}: rate {s} is negative — a row cannot catch LESS of a thing; recovery is `relax 0 <rate>`", .{ ctx.op.name, fixed.format(rate, &nb) });
+    // `relax`'s guard, for `relax`'s reason: past one whole gap a row would
+    // end the tick holding MORE than the neighbour it caught it from, and
+    // the front would run away from its own source.
+    if (fixed.mul(rate, ctx.dt) > fixed.ONE) {
+        var db: [24]u8 = undefined;
+        return ctx.refuse("{s}: rate {s} over a {s}s tick closes more than the whole gap — a row would end up holding more than the neighbour it caught it from", .{ ctx.op.name, fixed.format(rate, &nb), fixed.format(ctx.dt, &db) });
+    }
+    // From the snapshot, both sides — the row's own too. A kernel's writes
+    // land after the whole node loop, so the live value and the snapshot are
+    // the same number here; reading one place keeps it that way when a
+    // kernel grows a line above this one.
+    const mine = s.neighUser(ctx.row_index, ch);
+    var best = mine;
+    if (ctx.handle(0)) |h| {
+        if (h.ptr) |ptr| if (h.len > 0) {
+            const ids: [*]const u32 = @ptrCast(@alignCast(ptr));
+            for (ids[0..h.len]) |other| {
+                const v = s.neighUser(other, ch);
+                if (v > best) best = v;
+            }
+        };
+    }
+    if (best <= mine) return; // nobody near has more: nothing to catch
+    const step = fixed.mul(best -% mine, fixed.mul(rate, ctx.dt));
+    try ctx.write(wr.ref, .add, .{ .scalar = step });
+}
+
 fn kSync(ctx: *row.Ctx) row.Error!void {
     const s = try sprayOf(ctx);
     const wr = ctx.write_ref orelse return ctx.refuse("{s}: needs the field to synchronise — `sync row.u0 <drift> <couple>`", .{ctx.op.name});
@@ -555,6 +612,17 @@ pub const WORDS = [_]rill.OpDef{
         .routes = .anywhere,
         .consumes = &.{"crowd"},
         .row = rowOnly(kSync),
+        .eval = planeRefuse,
+    },
+    .{
+        .name = "infect",
+        .statics = &.{.{ .name = "field", .kind = .path }},
+        .inputs = &.{.{ .name = "rate", .ty = Tag.number }},
+        .help = "Row word: a channel SPREADS between neighbours — a row closes `rate * dt` of the gap to the highest value among the rows `near` found, and never goes down. The maximum and not the mean: a mean is diffusion and smears a peak, a maximum is transmission and makes a front. Recovery is `relax 0 <rate>` on the same channel, so an epidemic is two lines and the balance of the two rates is the threshold. Only a user channel; needs a `near` above it. `infect row.u0 3`.",
+        .class = .reads,
+        .routes = .anywhere,
+        .consumes = &.{"crowd"},
+        .row = rowOnly(kInfect),
         .eval = planeRefuse,
     },
     .{

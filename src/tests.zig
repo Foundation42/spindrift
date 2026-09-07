@@ -1317,6 +1317,112 @@ test "near: the cap STOPS the scan, and the capped answer is the uncapped one's 
 
 
 
+test "infect: a channel spreads from the neighbour that has MOST of it, and never the other way" {
+    // funideas §6, the thirteenth word: "transfer a state variable between
+    // neighbours. Now you've got spreading fire, bioluminescence, chemical
+    // reactions, disease, magic, whatever."
+    //
+    // Four rows on a line, `near 0.9`, one of them alight:
+    //
+    //     id 0        id 3     id 1                    id 2
+    //     x = 0       x = 0.25 x = 0.5                 x = 5
+    //     u0 = 1      u0 = 0   u0 = 0                  u0 = 0
+    //     <---------- in reach of each other --------> out of reach
+    //
+    // The numbers are chosen so the MEAN and the MAXIMUM disagree: row 1 sees
+    // a 1 and a 0, so a mean would pull it to 0.25 in one tick at rate 0.5
+    // and a maximum pulls it to 0.5. Diffusion and transmission are different
+    // words, and this gate is the difference.
+    //
+    // Mutation: the neighbours' MEAN instead of their maximum — row 1 reads
+    //   0.25, which is the smear this word exists not to be.
+    // Mutation: the monotone rule dropped — the SOURCE catches its
+    //   neighbours' zero and dims, and the front eats itself from behind.
+    //   It takes BOTH halves to show it: `best` is seeded with the row's own
+    //   value AND the write is skipped when nothing beats it, so either one
+    //   alone still holds the line and neither alone is a mutation. Written
+    //   down because a reader tidying one of them away would find the gate
+    //   still green.
+    // Mutation: `.replace` instead of `.add` — row 1 lands on the step
+    //   itself, which is the same number on the first tick and 0.25 rather
+    //   than 0.75 on the second. Two ticks are why this gate takes two.
+    // Mutation: the row's own value read from the population instead of the
+    //   snapshot — no bite, and recorded as no bite: nothing has written this
+    //   row's channel when its kernel runs, so the two are the same number.
+    //   It reads the snapshot so both sides of the comparison come from one
+    //   place.
+    const gpa = testing.allocator;
+    const b = try Bench.init(gpa, 8, 1);
+    defer b.deinit(gpa);
+    b.spray.knobs = .{ .rate = fixed.fromInt(4), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+    try b.mount("near 0.9 | write row.u3\ninfect row.u0 0.5\n");
+    try b.tick(0, 0);
+    try b.tick(1, std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 4), b.spray.pop.live);
+    b.spray.knobs.rate = 0;
+
+    const p = &b.spray.pop;
+    inline for (.{ 0, 3, 1, 2 }, .{ 0, fixed.fromRatio(1, 4), fixed.HALF, fixed.fromInt(5) }) |id, x| {
+        p.pos[0][id] = x;
+        p.pos[1][id] = 0;
+        p.pos[2][id] = 0;
+        inline for (0..3) |a| p.vel[a][id] = 0;
+    }
+    p.userOf(0)[0] = fixed.ONE; // the one alight
+    try b.tick(2, 2 * std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 0), b.spray.last.refusals);
+
+    // Half the gap to the MAXIMUM in reach, in one second at rate 0.5.
+    try testing.expectEqual(fixed.HALF, p.userOf(1)[0]);
+    try testing.expectEqual(fixed.HALF, p.userOf(3)[0]);
+    // The source does not dim: nobody near it has more.
+    try testing.expectEqual(fixed.ONE, p.userOf(0)[0]);
+    // And nothing reaches the row out of reach.
+    try testing.expectEqual(@as(Fixed, 0), p.userOf(2)[0]);
+
+    // A second tick: half of what is LEFT, which is 0.75 — and 0.25 if the
+    // step replaced the value instead of adding to it.
+    try b.tick(3, 3 * std.time.ns_per_s);
+    try testing.expectEqual(fixed.fromRatio(3, 4), p.userOf(1)[0]);
+    try testing.expectEqual(fixed.ONE, p.userOf(0)[0]);
+    try testing.expectEqual(@as(Fixed, 0), p.userOf(2)[0]);
+}
+
+
+
+
+test "infect: refuses a channel that is not the row's own, a negative rate, and a rate that would overshoot" {
+    // The same three guards `relax` and `sync` carry, and the middle one is
+    // the word's meaning rather than its arithmetic: a row cannot catch LESS
+    // of a thing. Recovery is a separate fact with its own rate.
+    //
+    // Mutation: any of the three guards dropped — the matching case stops
+    //   refusing, and the overshoot one leaves a row holding MORE than the
+    //   neighbour it caught it from, which is a front outrunning its source.
+    const gpa = testing.allocator;
+    const cases = [_]struct { src: []const u8, want: []const u8 }{
+        .{ .src = "near 0.9 | write row.u3\ninfect row.size 1\n", .want = "only a user channel" },
+        .{ .src = "near 0.9 | write row.u3\ninfect row.u0 -1\n", .want = "recovery is `relax 0" },
+        .{ .src = "near 0.9 | write row.u3\ninfect row.u0 4\n", .want = "more than the whole gap" },
+    };
+    for (cases) |c| {
+        const b = try Bench.init(gpa, 4, 1);
+        defer b.deinit(gpa);
+        b.spray.knobs = .{ .rate = fixed.fromInt(1), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+        try b.mount(c.src);
+        try b.tick(0, 0);
+        try b.tick(1, std.time.ns_per_s);
+        try testing.expect(b.spray.last.refusals > 0);
+        if (std.mem.indexOf(u8, b.spray.last_refusal.text(), c.want) == null) {
+            std.debug.print("infect refusal did not say '{s}': {s}\n", .{ c.want, b.spray.last_refusal.text() });
+            return error.TestUnexpectedResult;
+        }
+    }
+}
+
+
+
+
 test "appearance: a spray SAYS what its coordinate channels mean, once, and a channel it has not got is refused when set" {
     // The contract a host bridges (Christian, 2026-09-07: "Matryoshka can
     // provide the bridge as long as the contract is there"). Spindrift

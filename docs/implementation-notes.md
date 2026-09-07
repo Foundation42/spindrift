@@ -1787,3 +1787,53 @@ surviving a tick. **Mutations four, all bitten** — the ceiling only after the
 gate grew a spray big enough to WANT an oversized chunk, which is the same
 lesson as the crowd in one cell: a clamp cannot be tested by data that never
 reaches it.
+
+## `infect` — the thirteenth word, 2026-09-08
+
+funideas §6, the entry beside `Synchronise` that had not been built:
+*"transfer a state variable between neighbours. Now you've got spreading
+fire, bioluminescence, chemical reactions, disease, magic, whatever."*
+Everything it needed was already here — the neighbourhood, the slate's handle
+lane, and the user-channel snapshot `sync` reads — so it is thirty lines.
+
+`infect row.uN <rate>`: a row closes `rate · dt` of the gap to the HIGHEST
+value among the rows `near` found.
+
+**Two decisions, and both are about what the word refuses to be.**
+
+**The maximum, not the mean.** A mean is diffusion — it is `relax` toward a
+neighbour average, and it smears a peak into a haze. A maximum is
+transmission, and it makes a FRONT. Watching a front cross a cloud is the
+thing this word is for, and the gate's numbers are chosen so the two answers
+differ: a row seeing a 1 and a 0 goes to 0.5 under a maximum and 0.25 under a
+mean.
+
+**Monotone, so recovery is somebody else's job.** A row among cleaner rows
+does not get cleaner; you catch it from somebody who has more. Healing is a
+separate fact with its own rate and `relax 0 <rate>` was already the word for
+it. Written as one operator with two rates it would have worked and hidden
+the number worth playing with — because `spread` against `heal` is an
+epidemic threshold, and `kernels/kindle.rill` shows it plainly: at 0.5 only
+the sources glow, at 2 the light propagates without taking, at 8 the whole
+cloud catches. One picture, three renders, two numbers.
+
+It adds its step rather than replacing (unlike `sync`, whose phase wraps), so
+it composes with the recovery line and with anything else a kernel does to
+the channel.
+
+**Gates two:** transmission on a four-row line — half the gap to the maximum,
+the source not dimming, a row out of reach untouched, and a second tick to
+tell `add` from `replace` (0.75, not 0.25); and the three refusals (not a
+user channel, a negative rate, a rate that would overshoot a whole gap).
+**Mutations six, all bitten.**
+
+**And one that took two tries to write.** "The monotone rule dropped" is not
+a mutation of either half on its own: `best` is seeded with the row's own
+value AND the write is skipped when nothing beats it, so removing either
+leaves the property standing. Only removing both bites. That is belt and
+braces in the code and a trap in the gate — a reader tidying one away would
+find everything green — so the gate says so where the mutations are listed.
+
+**Found:** the G2 parity gate caught the missing manual row the moment the
+word was registered, before a single test of the word itself ran. That is the
+gate doing exactly what it is for.

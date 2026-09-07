@@ -1,0 +1,39 @@
+// kindle — a light that spreads. funideas §6's other neighbour word: not
+// "every row an oscillator that entrains" (`motes`, `sync`) but "a thing one
+// row has and passes on" (`infect`).
+//
+// Nothing here decides that a front should travel. Three independent facts
+// do, and the picture is what they add up to:
+//
+//   a few rows are always alight       (the sources, from `row.seed`)
+//   a row catches from whoever is near  (`infect`)
+//   every row goes out on its own       (`relax 0`)
+//
+// The last two are the whole system. `spread` against `heal` is an epidemic
+// threshold: below it a source glows alone in a small halo, above it the
+// light crosses the cloud and keeps crossing. That number is worth turning
+// by hand, which is exactly why `infect` does not own it — recovery is a
+// separate fact and `relax` was already the word for it.
+//
+//   row.u0  lit     0 dark → 1 alight. This is what a renderer reads.
+//   row.u1  source  1 for the few rows that are never out, else 0
+//   row.u3  crowd   how many are in reach (a readout)
+
+spawn
+perish
+
+// The sources: `row.seed` is a per-row uniform in [0, 1), so this lights the
+// top ~1.7% of them and leaves a soft edge rather than a hard set.
+row.seed | mul 60 | sub 59 | clamp 0 1 | write row.u1
+
+// Who is close, and catch it from whoever among them has most.
+near plane.drift.@self.k.reach | write row.u3
+infect row.u0 plane.drift.@self.k.spread
+
+// Everybody goes out, all the time. Against the line above, this is the
+// threshold; on its own it is why a front has a back.
+row.u0 | relax 0 plane.drift.@self.k.heal | write row.u0 add
+
+// And a source holds its own light up, so there is always something to
+// catch. Gated on `row.u1`, so it is the sources' line and nobody else's.
+row.u0 | relax 1 plane.drift.@self.k.stoke | mul row.u1 | write row.u0 add
