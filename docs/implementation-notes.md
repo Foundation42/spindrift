@@ -1180,3 +1180,71 @@ pictures by eye, the context was short, and G21 had already held the
 eight campaign-3 pairs byte-identical at the puff's zero — the honest
 statement is that ruling 30's whole run belongs to the next close, and
 that is said in the report rather than implied. "We have puffs."
+
+
+**The manifold, 2026-09-07 (`kernels/fire.rill`; nothing in rill, nothing
+in loam).** Christian's week of particles, and `docs/funideas.md` §9's
+jump: an RBF set does not care that its query point is a POSITION. Read
+loam's `rbf.Set` at a particle's STATE instead and the same evaluator
+that skins the marble skins a flame — `State → Field → Properties`. So
+`fire.rill` is the first kernel that writes NO COLOUR. It writes a point
+in an appearance manifold (`row.u0` cooled, `u1` sooted, `u2` thinned),
+and what moves that point is what happened to the row. Age is still in
+here — `perish` reads it — but nothing about how the row LOOKS comes
+from it.
+
+Three shapes came out of the code rather than the design. (1) A spawn
+zeroes a row's user channels (`population.clearRow`), so the axes are
+spelled as how much has HAPPENED, never as what is left: a newborn has
+no history and (0,0,0) is the flame. Authored the manifold the other way
+up first — x as temperature — and every number stayed in range while
+cold soot glowed orange on the floor; numbers in range are not numbers
+that agree, and it was the PICTURE that said so. (2) Every line is
+`(1 − x) · rate`, an approach that saturates, so no influence can drive a
+channel past 1 and no clamp is needed to say so. (3) Every write is
+`add`, because `row.zig`'s `landedVal` reads the LIVE field: a row's
+queued adds land in order, so the influences SUM. A second cooling term
+is not a special case of the first, it is another force on the same
+channel. That is the whole trick, and it is why `write row.u0` (replace)
+is a mutation that bites.
+
+**Gate:** "fire.rill: the appearance coordinate is the WORLD's, not the
+clock's" — one kernel, one seed, one schedule, two worlds. `world.zig`'s
+negative control read the other way up: an emitter whose dump is
+identical over `Nowhere` and over `Floor` never asked, so this one's two
+must DIFFER, by name. Landed: cooled > 0.95, sooted > 0.90. Falling:
+cooled < 0.60, sooted < 0.40. **Mutations, five, all bitten:** the
+`plunge` line dropped; the `settle` line dropped; `plunge` ungated (`mul
+row.stuck` dropped, so it fires for every row and the worlds agree
+again); the `quench` line dropped; `write row.u0 add` made replace.
+
+**Found, three.** (a) **A kernel's knobs and the SPRAY's own knobs share
+one namespace, with no guard.** `plane.drift.@self.spread` named as a
+kernel's thinning rate silently retunes the launch cone: `run.zig:446`
+re-reads knobs from the plane every tick, so the mount line printed the
+1.6 the flag asked for and the plane then made it 0.013. Every ember went
+straight up in a pencil, green. Same shape as the gravity-knob bite in
+CLAUDE.md. RULING WANTED: refuse a kernel knob that shadows a spray
+knob, or namespace them apart. (b) **Ruling 20's recorded trigger fired.**
+"A tunnel at frame rate in a customer scene" — 2.6% of embers pass
+through the mock floor and fall for the rest of their life. `collide`
+tests `pos → pos + vel_start · dt`; the integrate moves by
+`vel_end · dt`, which is `g · dt²` further, so a row that stops in that
+sliver passes the test, lands below, and `world.zig:68` says "already
+through" for ever after. Measured, not asserted: 2.57% at 16 ms, 0.93% at
+8, 0.49% at 4 — linear in dt, a positional error and not a physical one.
+Matryoshka's tracer places such a row on the face it came through; the
+mock floor does not. (c) A stuck row still spreads — `thin` is not gated
+on being free and `settle` only BALANCES it — so `thinned` goes to
+`thin/(thin + |settle|)`, not to zero. The gate pins that balance rather
+than calling it small.
+
+**Recorded, not built.** (i) `relax <target> <rate>` — every state line
+spells `| mul -1 | add 1 | mul <rate> |` to say "approach 1", and the
+rates are PER TICK, so the kernel is correct at one dt only: a kernel
+cannot spell dt (`ctx.dt` is Zig's, there is no `row.dt`, and every
+stateful rill op that would relax is not row-legal). Trigger: this
+kernel, which exists. (ii) Two saturating factors in one flow — gating
+`thin` on being free wants `(1 − u2) · (1 − stuck)`, and a row cannot
+nest a sub-expression as an argument. Trigger: a second customer that
+wants it; one is a coincidence.

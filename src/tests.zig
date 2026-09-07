@@ -642,6 +642,7 @@ test "negative control: P1 has no collision — the floor and no world at all ag
 // ---------------------------------------------------------------------------
 
 const smoke = @embedFile("smoke.rill");
+const fire = @embedFile("fire.rill");
 
 const FieldBench = struct {
     reg: rill.Registry,
@@ -926,6 +927,94 @@ test "smoke.rill: the shipped kernel parses and mounts on a spray that samples $
     b.spray.samples = &.{.{ .channel = "$wind", .cell = fixed.HALF }};
     try b.mount(smoke);
     try testing.expectEqual(@as(usize, 6), b.spray.kernel.?.prog.nodeCount());
+}
+
+test "fire.rill: the appearance coordinate is the WORLD's, not the clock's — one kernel, one seed, one schedule, and only the floor differs" {
+    // The manifold's customer scene (funideas §9, 2026-09-07). This kernel
+    // writes NO colour: it writes a point in an appearance manifold, and
+    // what moves that point is what happened to the row. So the claim is
+    // not "the numbers change" — an age curve does that. The claim is that
+    // the WORLD changes them, and the negative control is world.zig's own,
+    // read the other way up: an emitter whose dump is identical over
+    // Nowhere and over Floor never asked, so this one's two dumps must
+    // DIFFER, and differ in the channels by name.
+    //
+    // Mutation: the `plunge` line dropped — a landed row cools no faster
+    // than a falling one, and `cooled` agrees across the two worlds.
+    // Mutation: the `settle` line dropped — `thinned` agrees across them.
+    // Mutation: `mul row.stuck` dropped from either — the deflection fires
+    // for every row and the two worlds agree again.
+    const gpa = testing.allocator;
+    var reg = try tracerRegistry(gpa);
+    defer reg.deinit();
+
+    // Punchier than the demo's knobs so ten ticks say it plainly; the
+    // shapes are the kernel's, not these numbers'.
+    const knobs = [_]struct { []const u8, f64 }{
+        .{ "cool", 0.05 },  .{ "plunge", 0.40 }, .{ "chill", 0.02 },
+        .{ "smoke", 0.03 }, .{ "quench", 0.30 },
+        .{ "thin", 0.06 },  .{ "settle", -0.50 },
+        .{ "puff", 0.30 },  .{ "grain", 0.06 },
+    };
+
+    var u: [2][3]Fixed = undefined;
+    for (0..2) |w| {
+        var mock = rill.MockPlane.init(gpa);
+        defer mock.deinit();
+        var buf: [64]u8 = undefined;
+        for (knobs) |k| try mock.putValue(try std.fmt.bufPrint(&buf, "plane.drift.@em.{s}", .{k[0]}), k[1]);
+        // The ONLY difference between the two runs.
+        var floor = spindrift.Floor{};
+        var nowhere = spindrift.Nowhere{};
+        var spray = try Spray.init(gpa, 4, 1, if (w == 0) floor.asWorld() else nowhere.asWorld());
+        defer spray.deinit();
+        // Born at y = 3 heading down at 2 cells/s (the same drop the beat-4
+        // `stick` gate uses, and for the same reason: at a one-second tick a
+        // row starting at y = 1 is already through the floor before
+        // `collide` gets a segment to test). Over the floor it lands on tick
+        // 2 and stays; over Nowhere it falls for the whole run.
+        spray.pos = .{ 0, fixed.fromInt(3), 0 };
+        spray.aim = .{ 0, -fixed.ONE, 0 };
+        spray.knobs = .{ .rate = fixed.fromInt(1), .speed = fixed.fromInt(2), .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+        var diag = rill.registry.Detail{};
+        spray.mountKernel(&reg, "k", fire, &diag) catch |err| {
+            std.debug.print("fire.rill refused: {s}\n", .{diag.text()});
+            return err;
+        };
+        try spray.tick(.{ .frame = 0, .time_ns = 0 }, null, mock.asPlane());
+        try spray.tick(.{ .frame = 1, .time_ns = std.time.ns_per_s }, null, mock.asPlane());
+        spray.knobs.rate = 0; // exactly one row, and it is row 0
+        var t: u64 = 2;
+        while (t <= 12) : (t += 1) try spray.tick(.{ .frame = t, .time_ns = t * std.time.ns_per_s }, null, mock.asPlane());
+        try testing.expectEqual(@as(u32, 0), spray.last.refusals);
+        try testing.expectEqual(@as(u8, if (w == 0) 1 else 0), spray.pop.stuck[0]);
+        const ch = spray.pop.userOf(0);
+        u[w] = .{ ch[0], ch[1], ch[2] };
+    }
+    const landed = u[0];
+    const falling = u[1];
+
+    // Quenched on the plate: cold, black, and DENSE — the three of them,
+    // and each for its own reason. A row that never touched anything is
+    // still warm, still cleanish, and spreading.
+    try testing.expect(landed[0] > fixed.fromRatio(95, 100)); // cooled, plunged
+    try testing.expect(falling[0] < fixed.fromRatio(60, 100));
+    try testing.expect(landed[1] > fixed.fromRatio(90, 100)); // sooted, quenched
+    try testing.expect(falling[1] < fixed.fromRatio(40, 100));
+    // `thinned` is the interesting one. The `thin` line is NOT gated on
+    // being free — a stuck row keeps spreading and `settle` only BALANCES
+    // it — so a landed row does not go to zero, it goes to the fixed point
+    // of `u += thin·(1 − u) + settle·u`, which is thin/(thin + |settle|) =
+    // 0.06/0.56 = 0.107. Pinning that balance is a stronger claim than
+    // "small": the mutation that drops `settle` sends it to ~1 instead.
+    // (Gating `thin` on free needs two saturating factors in one flow,
+    // which the row cannot spell today — see the ledger.)
+    try testing.expect(landed[2] > fixed.fromRatio(8, 100) and landed[2] < fixed.fromRatio(13, 100));
+    try testing.expect(falling[2] > fixed.fromRatio(35, 100));
+
+    // And the whole point, in one line: the same program, the same seed and
+    // the same clock put the row in two different places in the manifold.
+    try testing.expect(landed[0] > falling[0] and landed[1] > falling[1] and landed[2] < falling[2]);
 }
 
 test "dirty chunks: a chunk is dirty on every tick a live row was swept in it — born, moving, or dying — and quiet otherwise" {

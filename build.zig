@@ -29,6 +29,7 @@ pub fn build(b: *std.Build) void {
     // given, and the gates mount it so the shipped text is the tested text.
     mod.addAnonymousImport("embers.rill", .{ .root_source_file = b.path("kernels/embers.rill") });
     mod.addAnonymousImport("smoke.rill", .{ .root_source_file = b.path("kernels/smoke.rill") });
+    mod.addAnonymousImport("fire.rill", .{ .root_source_file = b.path("kernels/fire.rill") });
 
     const lib = b.addLibrary(.{
         .linkage = .static,

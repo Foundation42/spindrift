@@ -88,7 +88,7 @@ tick, and two runs with the same flags print the same digest.
 | `src/spray.zig` | knobs, the six-phase tick, kernel mount, lattices, the aggregate cast, what the spray says |
 | `src/words.zig` | `spawn`, `gravity`, `perish`, `hear` — row words registered into rill (`over`, the fifth from beat 3, is rill's core word since rill `23ac55c`); `collide`, `ground`, `stick` — the TRACER table a host with a World registers (`stick` lands the row at the contact and stores `row.normal`; the appearance draws it at pos + normal × size; the normal rides the pipe by name) |
 | `src/scheduler.zig` | the row-steps budget over sprays: `plan` by staleness, frustum, dynamic, index — the first always runs |
-| `kernels/embers.rill`, `kernels/smoke.rill` | the first two kernels; embers is `drift-run`'s default |
+| `kernels/embers.rill`, `kernels/smoke.rill`, `kernels/fire.rill` | the kernels; embers is `drift-run`'s default. `fire` writes no colour — it writes a point in an APPEARANCE MANIFOLD (`row.u0`–`u2`: cooled, sooted, thinned) that a renderer reads an RBF set at, so a landed ember quenches to soot and a flying one blows thin, from one file and one kernel |
 | `docs/drift-words.md` | the words manual, parity-gated both ways |
 | `src/run.zig` | `drift-run` |
 | `src/tests.zig` | the gates, each with its named mutation |
