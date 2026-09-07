@@ -432,6 +432,13 @@ pub const Spray = struct {
     /// in, which under chunking is no order at all. One snapshot, taken once,
     /// read by everybody: the same rule the lattices already follow.
     neigh_pos: [][3]Fixed = &.{},
+    /// Each live row's VELOCITY as of the build — `align`'s reading, and the
+    /// third of the flocking trio. Snapshotted for the same reason the
+    /// positions are: the sweep integrates a row the instant its kernel is
+    /// done, so a live read would have half the flock steering toward
+    /// velocities the other half had not adopted yet, and the answer would
+    /// depend on the order the chunks happened to run in.
+    neigh_vel: [][3]Fixed = &.{},
     /// Each live row's USER CHANNELS as of the build. A word that reads a
     /// neighbour's state — `sync` reads its phase — must read the snapshot
     /// for the same reason `push` reads snapshot positions: a kernel's
@@ -497,6 +504,8 @@ pub const Spray = struct {
         errdefer gpa.free(sp.grid_items);
         sp.neigh_pos = try gpa.alloc([3]Fixed, capacity);
         errdefer gpa.free(sp.neigh_pos);
+        sp.neigh_vel = try gpa.alloc([3]Fixed, capacity);
+        errdefer gpa.free(sp.neigh_vel);
         sp.neigh_user = try gpa.alloc(Fixed, @as(usize, capacity) * population.USER_CHANNELS);
         return sp;
     }
@@ -524,6 +533,7 @@ pub const Spray = struct {
             if (!p.alive[id]) continue;
             const q = [3]Fixed{ p.pos[0][id], p.pos[1][id], p.pos[2][id] };
             self.neigh_pos[id] = q;
+            self.neigh_vel[id] = .{ p.vel[0][id], p.vel[1][id], p.vel[2][id] };
             @memcpy(self.neigh_user[@as(usize, id) * population.USER_CHANNELS ..][0..population.USER_CHANNELS], p.userOf(id));
             inline for (0..3) |a| {
                 if (live == 0 or q[a] < lo[a]) lo[a] = q[a];
@@ -700,6 +710,11 @@ pub const Spray = struct {
         return self.neigh_pos[id];
     }
 
+    /// A row's velocity as the neighbourhood saw it.
+    pub fn neighVel(self: *const Spray, id: u32) [3]Fixed {
+        return self.neigh_vel[id];
+    }
+
     /// A row's user channel as the neighbourhood saw it.
     pub fn neighUser(self: *const Spray, id: u32, ch: u16) Fixed {
         return self.neigh_user[@as(usize, id) * population.USER_CHANNELS + ch];
@@ -725,6 +740,7 @@ pub const Spray = struct {
         self.gpa.free(self.grid_starts);
         self.gpa.free(self.grid_items);
         self.gpa.free(self.neigh_pos);
+        self.gpa.free(self.neigh_vel);
         self.gpa.free(self.neigh_user);
         self.gpa.free(self.neigh_bufs);
         self.pop.deinit();

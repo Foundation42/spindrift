@@ -1,0 +1,32 @@
+// boids — the flocking trio, and a demonstration that it is three lines and
+// one new word.
+//
+// Separation is `push` with a positive gain. Cohesion is the SAME WORD with
+// a negative one — the arithmetic is identical and only the direction
+// differs, which is why `push` has no sign guard. Alignment needed the
+// neighbourhood to carry velocity, and that is all `align` is.
+//
+// The two radii are the point. A single `near` gives one ring, and a flock
+// wants two: a tight one it will not crowd into and a wide one it belongs
+// to. Two `near` lines do it, because a `push` or an `align` reads whichever
+// `near` is nearest ABOVE it — the slate's own rule, doing a job nobody
+// designed it for.
+//
+//   row.u3  the tight crowd  (a readout)
+//   row.u2  the wide crowd   (a readout — and what a colour can read)
+
+spawn
+perish
+
+// Do not crowd: a tight ring, strongly.
+near plane.drift.@self.k.near | write row.u3
+push plane.drift.@self.k.shove
+
+// But belong: a wide ring, gently, and the same word negated. Drive
+// `k.flock` positive from a rill and the flock SCATTERS — one number, and
+// no part of this file has to know it moved.
+near plane.drift.@self.k.far | write row.u2
+push plane.drift.@self.k.flock
+
+// And go the way everyone else is going.
+align plane.drift.@self.k.match

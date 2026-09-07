@@ -445,6 +445,44 @@ fn kInfect(ctx: *row.Ctx) row.Error!void {
     try ctx.write(wr.ref, .add, .{ .scalar = step });
 }
 
+/// `align <k>` — the third of the flocking trio: a row steers its velocity
+/// toward the MEAN velocity of the rows `near` found, closing `k · dt` of the
+/// difference. Separation is `push` with a positive gain and cohesion is the
+/// same word with a negative one, so this is the only one of the three that
+/// needed anything new — the neighbourhood had positions and user channels,
+/// and a flock needs to know which way its neighbours are GOING.
+///
+/// The mean and not the maximum, which is the opposite of `infect`'s choice
+/// and for the opposite reason: alignment is a consensus, and one fast row
+/// should not drag the flock.
+fn kAlign(ctx: *row.Ctx) row.Error!void {
+    const s = try sprayOf(ctx);
+    const k = try ctx.scalar(0);
+    var nb: [24]u8 = undefined;
+    if (k < 0) return ctx.refuse("{s}: gain {s} is negative — that steers a row AGAINST its neighbours, which is not a word yet", .{ ctx.op.name, fixed.format(k, &nb) });
+    // `relax`'s guard, for `relax`'s reason: past one whole gap a row
+    // overshoots the average it was steering toward, and past two it diverges
+    // a little further every tick.
+    if (fixed.mul(k, ctx.dt) > fixed.ONE) {
+        var db: [24]u8 = undefined;
+        return ctx.refuse("{s}: gain {s} over a {s}s tick closes more than the whole difference — a row would steer past the average it is joining", .{ ctx.op.name, fixed.format(k, &nb), fixed.format(ctx.dt, &db) });
+    }
+    const h = ctx.handle(0) orelse return; // `near` was quiet for this row
+    const ids: [*]const u32 = @ptrCast(@alignCast(h.ptr orelse return));
+    if (h.len == 0) return; // alone: nothing to agree with
+    const mine = s.neighVel(ctx.row_index);
+    var sum: fixed.Vec = .{ 0, 0, 0 };
+    for (ids[0..h.len]) |other| {
+        const theirs = s.neighVel(other);
+        inline for (0..3) |a| sum[a] +%= theirs[a];
+    }
+    const gain = fixed.mul(k, ctx.dt);
+    const n: Fixed = @intCast(h.len);
+    var out: fixed.Vec = undefined;
+    inline for (0..3) |a| out[a] = fixed.mul(@divTrunc(sum[a], n) -% mine[a], gain);
+    try ctx.write(.{ .field = population.F_VEL }, .add, .{ .vec3 = out });
+}
+
 fn kSync(ctx: *row.Ctx) row.Error!void {
     const s = try sprayOf(ctx);
     const wr = ctx.write_ref orelse return ctx.refuse("{s}: needs the field to synchronise — `sync row.u0 <drift> <couple>`", .{ctx.op.name});
@@ -601,6 +639,16 @@ pub const WORDS = [_]rill.OpDef{
         .routes = .anywhere,
         .consumes = &.{"crowd"},
         .row = rowOnly(kPush),
+        .eval = planeRefuse,
+    },
+    .{
+        .name = "align",
+        .inputs = &.{.{ .name = "k", .ty = Tag.number }},
+        .help = "Row word: alignment — steer toward the MEAN velocity of the rows `near` found, `vel += (mean(other.vel) - vel) * k * dt`. The third of the flocking trio; separation is `push <k>` and cohesion is `push` with a NEGATIVE k, so a boid is `near` + those three. Neighbours' velocities come from the neighbourhood's snapshot. Needs a `near` above it.",
+        .class = .reads,
+        .routes = .anywhere,
+        .consumes = &.{"crowd"},
+        .row = rowOnly(kAlign),
         .eval = planeRefuse,
     },
     .{

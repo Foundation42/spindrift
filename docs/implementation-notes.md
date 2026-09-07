@@ -1837,3 +1837,51 @@ find everything green — so the gate says so where the mutations are listed.
 **Found:** the G2 parity gate caught the missing manual row the moment the
 word was registered, before a single test of the word itself ran. That is the
 gate doing exactly what it is for.
+
+## `align`, and the flocking trio — 2026-09-08
+
+Christian: *"Boids… flocking behavior with avoid. Or cockroach particles on
+the floor, and scattering and regrouping. They are kind of the same thing."*
+They are the same kernel, and two thirds of it already existed.
+
+**Separation is `push`. Cohesion is `push` with a NEGATIVE gain** — the
+arithmetic is identical and only the direction differs, which is why `push`
+never had a sign guard and does not get one now. **Alignment** is the only
+one that needed anything, and what it needed was not a word but a FIELD: the
+neighbourhood snapshotted positions and user channels, and a flock has to
+know which way its neighbours are going. `neigh_vel`, filled in the same
+pass, and `align <k>` steers by `(mean(other.vel) − vel) · k · dt`.
+
+**The mean, and `infect` takes the maximum** — the two words are opposites on
+purpose. Alignment is a consensus, so one fast row must not drag the flock;
+transmission is a front, so one lit row must reach everybody. Each gate picks
+numbers where the two answers differ, so neither can quietly become the
+other.
+
+**Two radii for free.** A flock wants a tight ring it will not crowd into and
+a wide one it belongs to, and one `near` gives one ring. Two `near` lines do
+it — a `push` or an `align` reads whichever `near` is nearest ABOVE it,
+because the slate resolves a consumer to the last publisher above it. That is
+the slate's own rule doing a job nobody designed it for, and it cost nothing.
+
+**Scatter and regroup is one number crossing zero.** `kernels/boids.rill`
+takes its cohesion gain from `plane.drift.@self.k.flock`, and
+matryoshka's `rills/scare.rill` is one `lfo` line swinging it −5 → +3 over
+seven seconds. Nothing in the kernel knows it moved: it reads a knob, as it
+always did. Measured through `drift-run`'s grid readout — the line added
+this morning for a different reason — cohesion gives `grid 864@1.37` and
+scatter `grid 1000@7.90`: six times the extent, from the sign.
+
+**Gates two, mutations six, all bitten.** The behaviour gate is four rows on
+a line whose mean and maximum disagree, and its load-bearing assertion is the
+row that must NOT move: row 0's neighbours average exactly its own velocity,
+so a missing `− mine` moves it and nothing else would show. **A gate on a
+floor, not just a value:** a lone row out of reach steers nowhere, which is
+what catches the dropped empty-handle return before it divides by zero.
+
+**Found, twice, and it is a host problem rather than ours.** A kernel using a
+word matryoshka's binary predates fails to mount, and an unmounted spray is
+pinned to rate zero — so the scene runs, says nothing, and shows nothing. It
+happened for `infect` and again for `align`. The engine says nothing on a
+mount failure; the symptom is `0 live rows` and no other word. RECORDED,
+trigger: the next time it costs more than a rebuild.

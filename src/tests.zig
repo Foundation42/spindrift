@@ -1317,6 +1317,102 @@ test "near: the cap STOPS the scan, and the capped answer is the uncapped one's 
 
 
 
+test "align: a row steers toward the MEAN velocity of its neighbours, and a row alone steers nowhere" {
+    // The flocking trio completed. Separation was `push` and cohesion is the
+    // same word with a negative gain (no sign guard, deliberately — the
+    // arithmetic is the same and only the direction differs), so alignment is
+    // the one that needed the neighbourhood to carry VELOCITY.
+    //
+    // Four rows on a line, `near 0.9`, three of them in reach of each other:
+    //
+    //     id 0        id 3        id 1                    id 2
+    //     x = 0       x = 0.25    x = 0.5                 x = 5
+    //     v = +1      v = +3      v = -1                  v = +1
+    //
+    // The numbers are chosen so the MEAN and the MAXIMUM disagree, as
+    // `infect`'s are — but the other way round: row 1 sees +1 and +3, so a
+    // mean steers it by (2 - -1)*0.25 = 0.75 and a maximum by 1. One fast row
+    // must not drag the flock, which is why this word takes the mean and
+    // `infect` does not.
+    //
+    // Mutation: the neighbours' MAXIMUM instead of their mean — row 1 lands
+    //   on 0 rather than -0.25.
+    // Mutation: the row's own velocity read from the population instead of
+    //   the snapshot — the sweep has integrated the rows swept before this
+    //   one, so the answer depends on chunk order; the symmetry below is what
+    //   a half-updated world destroys.
+    // Mutation: `mine` left out of the difference (steer toward the mean
+    //   rather than by the gap) — row 0 moves when it should not.
+    // Mutation: the empty-handle return dropped — the lone row divides by
+    //   zero, or steers by the sum of nothing.
+    const gpa = testing.allocator;
+    const b = try Bench.init(gpa, 8, 1);
+    defer b.deinit(gpa);
+    b.spray.knobs = .{ .rate = fixed.fromInt(4), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+    try b.mount("near 0.9 | write row.u3\nalign 0.25\n");
+    try b.tick(0, 0);
+    try b.tick(1, std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 4), b.spray.pop.live);
+    b.spray.knobs.rate = 0;
+
+    const p = &b.spray.pop;
+    inline for (.{ 0, 3, 1, 2 }, .{ 0, fixed.fromRatio(1, 4), fixed.HALF, fixed.fromInt(5) }, .{ 1, 3, -1, 1 }) |id, x, vx| {
+        p.pos[0][id] = x;
+        p.pos[1][id] = 0;
+        p.pos[2][id] = 0;
+        p.vel[0][id] = fixed.fromInt(vx);
+        p.vel[1][id] = 0;
+        p.vel[2][id] = 0;
+    }
+    try b.tick(2, 2 * std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 0), b.spray.last.refusals);
+
+    // Row 1 sees +1 and +3: mean 2, a quarter of the gap from -1 is +0.75.
+    try testing.expectEqual(-fixed.fromRatio(1, 4), p.vel[0][1]);
+    // Row 3 sees +1 and -1: mean 0, a quarter of the gap from +3 is -0.75.
+    try testing.expectEqual(fixed.fromRatio(9, 4), p.vel[0][3]);
+    // Row 0 sees +3 and -1: mean 1, which is what it already had. It is the
+    // row that must NOT move, and the one a missing `- mine` moves.
+    try testing.expectEqual(fixed.fromInt(1), p.vel[0][0]);
+    // And the row out of reach agrees with nobody.
+    try testing.expectEqual(fixed.fromInt(1), p.vel[0][2]);
+    // Nothing steered off the line it was on.
+    inline for (.{ 0, 1, 2, 3 }) |id| {
+        try testing.expectEqual(@as(Fixed, 0), p.vel[1][id]);
+        try testing.expectEqual(@as(Fixed, 0), p.vel[2][id]);
+    }
+}
+
+
+
+
+test "align: refuses a negative gain and a gain that would steer past the average" {
+    // `relax`'s two guards, and the first is the word's meaning: steering
+    // AGAINST the neighbours is a different behaviour and has no word yet.
+    // Mutation: either guard dropped — the matching case stops refusing.
+    const gpa = testing.allocator;
+    const cases = [_]struct { src: []const u8, want: []const u8 }{
+        .{ .src = "near 0.9 | write row.u3\nalign -1\n", .want = "steers a row AGAINST" },
+        .{ .src = "near 0.9 | write row.u3\nalign 4\n", .want = "more than the whole difference" },
+    };
+    for (cases) |c| {
+        const b = try Bench.init(gpa, 4, 1);
+        defer b.deinit(gpa);
+        b.spray.knobs = .{ .rate = fixed.fromInt(1), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+        try b.mount(c.src);
+        try b.tick(0, 0);
+        try b.tick(1, std.time.ns_per_s);
+        try testing.expect(b.spray.last.refusals > 0);
+        if (std.mem.indexOf(u8, b.spray.last_refusal.text(), c.want) == null) {
+            std.debug.print("align refusal did not say '{s}': {s}\n", .{ c.want, b.spray.last_refusal.text() });
+            return error.TestUnexpectedResult;
+        }
+    }
+}
+
+
+
+
 test "infect: a channel spreads from the neighbour that has MOST of it, and never the other way" {
     // funideas §6, the thirteenth word: "transfer a state variable between
     // neighbours. Now you've got spreading fire, bioluminescence, chemical
