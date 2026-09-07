@@ -175,10 +175,38 @@ pub const Stats = struct {
     neigh_cells: u32 = 0,
 };
 
-/// Rows per job. ≈ 80 bytes of row across the arrays, so a chunk streams
-/// ≈ 80 KB — inside L2 with room for scratch. A constant until the first
-/// customer scene moves it (R-b §3).
+/// The LARGEST a chunk gets, and what a spray sweeping serially uses. ≈ 80
+/// bytes of row across the arrays, so a chunk streams ≈ 80 KB — inside L2
+/// with room for scratch.
+///
+/// It was the only chunk size until 2026-09-08 — "a constant until the first
+/// customer scene moves it (R-b §3)", and the fireflies scene is that scene.
+/// It moved because a cache number is the wrong number: 2482 rows made 2.4
+/// chunks for THIRTY workers, a tenth of the machine, which is why the
+/// engine's tick was slower than drift-run's single thread. `chooseChunk`
+/// derives the real one; this is the ceiling and the serial default.
 pub const DEFAULT_CHUNK: u32 = 1024;
+
+/// Chunks a spray is cut into. Enough to spread over any machine several
+/// times — chunks do not finish together, so one per worker leaves the
+/// machine waiting on its slowest — and a spray at a third of its capacity
+/// (which is where a life-bounded emitter settles) still fills a big one.
+///
+/// From CAPACITY and nothing else, deliberately: the worker count would be a
+/// better number and cannot be had in time. `chunk` is also the host's
+/// dirty-upload unit, and a host sizes its per-chunk arrays the moment it is
+/// handed a spray — matryoshka's `spray_bridge.zig` allocates `run_n` at
+/// mount and then skips any spray whose chunk table has since changed
+/// length. Deriving on the first tick instead of at init moved the chunk
+/// AFTER that, and the engine drew nothing at all, silently, for ever. A
+/// number that a host builds on must be final before the host can read it.
+pub const TARGET_CHUNKS: u32 = 256;
+
+/// The fewest rows worth dispatching as a job: below this the dispatch IS the
+/// work. Measured on the fireflies scene at 30 workers, Debug — chunks of
+/// 1024/256/128/64/32/16 rows cost 2860/1304/1052/925/895/953 µs a tick, so
+/// the floor is real but shallow, and everything above ~128 is waste.
+pub const MIN_CHUNK: u32 = 32;
 
 /// Rows one `near` may hand on. A cap and not a budget: a row with more
 /// neighbours than this is a row in a crowd, and the sweep counts it
@@ -343,6 +371,11 @@ pub const Spray = struct {
     /// spray's authored ear hears a coupled deposit only while it carries
     /// the tag, exactly as an entity-bound ear does. Set by the host.
     carried: []const []const u8 = &.{},
+    /// Rows per job — and the dirty-upload unit a host reads, which is why it
+    /// is settled at INIT and never moves: a host sizes per-chunk arrays from
+    /// it as soon as it has the spray, and a chunk that changed afterwards
+    /// would leave those the wrong length. A host that wants its own says
+    /// `setChunk` before handing the spray anywhere.
     chunk: u32 = DEFAULT_CHUNK,
 
     /// Rows owed by `rate`, in (rows · 2¹⁶ · ns): `rate` is Q16.16 rows/s
@@ -453,6 +486,8 @@ pub const Spray = struct {
             .world = world,
         };
         errdefer sp.pop.deinit();
+        // The chunk, settled here and never again — see `TARGET_CHUNKS`.
+        sp.chunk = std.math.clamp(capacity / TARGET_CHUNKS, MIN_CHUNK, DEFAULT_CHUNK);
         // One cell per row is the most the grid will ever be cut into, so the
         // starts array is capacity+1 and `sizeGrid` coarsens until it fits.
         // Capacity stays the only allocation, as it is for the lattices.
@@ -1078,6 +1113,14 @@ pub const Spray = struct {
     // -- phase 4: the sweep (chunked) ------------------------------------------
 
     const SweepCtx = struct { spray: *Spray, dt: Fixed, dt_ns: u64 };
+
+    /// A host that wants the chunk its own way. Say it BEFORE handing the
+    /// spray anywhere: a host sizes its per-chunk arrays from `chunk` when it
+    /// takes the spray, and moving it afterwards leaves those the wrong
+    /// length — which in matryoshka means the spray runs and draws nothing.
+    pub fn setChunk(self: *Spray, rows: u32) void {
+        self.chunk = @max(1, rows);
+    }
 
     /// The per-chunk arrays follow `chunk`, which a host may set after init.
     fn sizeChunks(self: *Spray) !void {

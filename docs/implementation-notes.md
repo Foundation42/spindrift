@@ -1706,10 +1706,84 @@ too-far rows scanned FIRST. And the prefix assertion (`capped == uncapped
 cut short`) is only self-consistent — reorder the cells and both halves move
 together. Which 64 a crowd hands on is a picture, so the gate names them.
 
-**Open.** The sweep chunks at `DEFAULT_CHUNK = 1024`, so 2482 rows are 2.4
-chunks spread over the engine's 30 workers — about a tenth of the machine.
-`chunk` is also matryoshka's dirty-upload unit (`spray_bridge.zig` sizes
-staging buffers from `DEFAULT_CHUNK` and counts chunks from `spray.chunk`),
-so moving it is a change with the engine's GPU sweep in the blast radius and
-belongs to a beat that can run it. Measured here at `--jobs 8`: chunk 1024 →
-64 took the crowd 1285 → 419 µs in ReleaseFast, digest unchanged.
+### And then the chunk
+
+**The last of it, same day.** The sweep chunked at `DEFAULT_CHUNK = 1024`, so
+2482 rows were 2.4 chunks over the engine's THIRTY workers — a tenth of the
+machine, and why the engine's Debug tick (5.12 ms, 30 workers) was slower
+than drift-run's single thread (3.78 ms) on a lighter kernel. Christian:
+*"it was just something we pulled out of thin air ... there is no rhyme or
+reason it is what it is, and memory isn't tight. Better to go too big than
+pretend we are running on a Z80."*
+
+The chunk is TWO units wearing one name — the sweep's work division and the
+host's dirty-upload granularity — and 1024 was a cache number (≈80 KB of row,
+inside L2) serving only the second. It is cut from CAPACITY at init now:
+`clamp(capacity / TARGET_CHUNKS, MIN_CHUNK, DEFAULT_CHUNK)`, 256 chunks, 32
+rows apiece at the playground's capacity.
+
+**Measured**, fireflies scene, 2482 rows, 30 workers, Debug, µs a tick:
+
+| chunk | 1024 | 512 | 256 | 128 | 64 | 32 | 16 | 8 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| | 2860 | 1833 | 1304 | 1052 | 925 | **895** | 953 | 952 |
+
+Both clamps are load-bearing and neither is about cache. The floor: a small
+spray asks for `capacity / 256 = 0` rows a chunk and `sizeChunks` divides by
+it. The ceiling: `DEFAULT_CHUNK` is the number matryoshka sized its staging
+buffers from (`spray_bridge.zig` allocates that many `GpuParticle` and
+asserts the chunk fits), so a bigger chunk runs off the end of them.
+
+**The bug this beat is actually about, and it is the good one.** The first
+cut derived the chunk from the JOB SYSTEM'S WORKER COUNT — a strictly better
+number, since the machine is what the division is for — on the first tick,
+because that is when a `JobSystem` is first in hand. Every gate passed, the
+suite was green, the sim's digest was identical at every chunk size and
+worker count, drift-run went 2860 → 912 µs, and the engine went 5.12 → 1.36
+ms with the GPU frame and the traversal split unchanged to the last digit.
+
+**And the picture was empty.** No fireflies at all.
+
+matryoshka allocates `run_n` from `spray.chunk` when it takes the spray, and
+then:
+
+```zig
+const dirty = l.spray.dirtyChunks();
+// Before the first tick the sim has no chunk table — and no rows.
+if (dirty.len != l.run_n.len) continue;
+```
+
+Deriving on the first tick moved the chunk AFTER the host had sized from it —
+8 entries against 242 — so the upload skipped that spray silently, every
+frame, for ever. **A number a host builds on has to be final before the host
+can read it**, which is why it is capacity-only and at init: the worker count
+is the better number and it cannot be had in time.
+
+**How it was caught, and how it nearly was not.** `Perf: sprites 0.09ms →
+0.00ms` was in the output of the very first run and I read past it. The
+frame-difference metric said 21.5% of bytes differed with a mean delta of 27,
+which I explained to myself as additive blending being order-sensitive — a
+plausible story for a real number, which is the most dangerous kind. What
+settled it was looking: two frames side by side, particles in one and none in
+the other. Same lesson as the playground's shadow the day before, and the
+same instrument. Before that, the run-to-run check earned its keep too — the
+engine is byte-identical across two runs of one binary, so the difference
+could not be blamed on timing.
+
+**What the chunk legitimately does change.** The engine's frame is not
+byte-identical across chunk sizes, and should not be: a chunk's live rows are
+packed into runs and each run is a BVH leaf, so the chunk decides the order an
+additive sprite pass accumulates in, and float addition is not associative.
+Measured against the 1024 baseline, the difference is 92% of the glow-core
+pixels at a mean delta of 6/255 and **zero** outside the glow — sky, ground
+and geometry untouched, mean exposure and saturated-pixel count unmoved. The
+SIM is bit-identical: `fireflies.rill` through `drift-run` gives digest
+`128740cb7ccea4a2` at chunk 1024, 34, 32 and derived.
+
+**Gate:** the chunk before any tick and after one; the floor on a small
+spray; the ceiling on a large one; `dirtyChunks().len` agreeing with it, which
+is the assertion that would have caught this; and a host's `setChunk`
+surviving a tick. **Mutations four, all bitten** — the ceiling only after the
+gate grew a spray big enough to WANT an oversized chunk, which is the same
+lesson as the crowd in one cell: a clamp cannot be tested by data that never
+reaches it.

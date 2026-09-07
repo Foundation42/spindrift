@@ -32,7 +32,7 @@
 //!   --world floor|slope|none  the mock World (default floor)
 //!   --name <em>            the spray's @name on the plane (default em)
 //!   --jobs <n>             worker threads for the sweep (default 0: inline)
-//!   --chunk <n>            rows per job (default 1024)
+//!   --chunk <n>            rows per job (default: derived from --jobs)
 //!   --rill <file.rill>     mount a program on the mock plane beside the spray
 //!   --seed <path>=<v>      set a plane path before mount (repeatable)
 //!   --channel <$c[:eps[:decay_ms]]>   declare a field channel on the mock store (repeatable)
@@ -77,7 +77,7 @@ fn usage() void {
         \\  --world floor|slope|none  the mock World (default floor); `slope` is the 3-4-5 plane `slide` needs
         \\  --name <em>           the spray's @name on the plane (default em)
         \\  --jobs <n>            worker threads (default 0: inline)
-        \\  --chunk <n>           rows per job (default 1024)
+        \\  --chunk <n>           rows per job (default: derived from --jobs)
         \\  --rill <file.rill>    mount a program beside the spray
         \\  --seed <path>=<v>     set a plane path before mount (repeatable)
         \\  --channel <$c[:eps[:decay_ms]]>  declare a field channel (repeatable)
@@ -115,7 +115,7 @@ const Options = struct {
     world: enum { floor, slope, none } = .floor,
     name: []const u8 = "em",
     jobs: u32 = 0,
-    chunk: u32 = spindrift.spray.DEFAULT_CHUNK,
+    chunk: ?u32 = null, // unset: the spray derives it from the job system
     rill_path: ?[]const u8 = null,
     every: u32 = 1,
     dump_path: ?[]const u8 = null,
@@ -293,8 +293,9 @@ pub fn main() !u8 {
         } else if (std.mem.eql(u8, a, "--jobs")) {
             o.jobs = std.fmt.parseInt(u32, v, 10) catch return bad(a, v, "a thread count");
         } else if (std.mem.eql(u8, a, "--chunk")) {
-            o.chunk = std.fmt.parseInt(u32, v, 10) catch return bad(a, v, "rows per job");
-            if (o.chunk == 0) return bad(a, v, "rows per job above zero");
+            const c = std.fmt.parseInt(u32, v, 10) catch return bad(a, v, "rows per job");
+            if (c == 0) return bad(a, v, "rows per job above zero");
+            o.chunk = c;
         } else if (std.mem.eql(u8, a, "--rill")) {
             o.rill_path = v;
         } else if (std.mem.eql(u8, a, "--seed")) {
@@ -405,7 +406,7 @@ pub fn main() !u8 {
     spray.knobs = o.knobs;
     spray.pos = o.pos;
     spray.aim = o.aim;
-    spray.chunk = o.chunk;
+    if (o.chunk) |c| spray.setChunk(c); // otherwise the spray chooses from the workers
     spray.fields = store.asFields();
     spray.samples = samples.items;
     spray.casts = casts.items;

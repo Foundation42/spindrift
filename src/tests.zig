@@ -54,7 +54,7 @@ fn run(gpa: std.mem.Allocator, s: Script, js: ?*jobs.JobSystem) ![]u8 {
     var spray = try Spray.init(gpa, s.capacity, s.seed, floor.asWorld());
     defer spray.deinit();
     spray.knobs = s.knobs;
-    spray.chunk = s.chunk;
+    spray.setChunk(s.chunk); // the gate's scale is load-bearing; say it, do not assign it
     var diag = rill.registry.Detail{};
     spray.mountKernel(&reg, "k", s.kernel, &diag) catch |err| {
         std.debug.print("kernel refused: {s}\n", .{diag.text()});
@@ -1763,6 +1763,78 @@ test "fire.rill: the appearance coordinate is the WORLD's, not the clock's — o
     try testing.expect(landed[0] > falling[0] and landed[1] > falling[1] and landed[2] < falling[2]);
 }
 
+test "the chunk is settled at INIT, from the capacity, and a host that says otherwise wins" {
+    // The chunk is TWO things wearing one name — the sweep's work-division
+    // unit and the dirty-upload unit a host reads — and until 2026-09-08 it
+    // was a cache number, 1024, serving only the second. On the fireflies
+    // scene that made 2482 rows into 2.4 chunks for THIRTY workers: a tenth
+    // of the machine, and why the engine's tick was slower than drift-run's
+    // single thread.
+    //
+    // It is cut from CAPACITY at init, and the "at init" is the load-bearing
+    // half. The first cut derived it from the job system's worker count on
+    // the FIRST TICK, which is a better number and arrives too late:
+    // matryoshka sizes `run_n` from `spray.chunk` when it takes the spray and
+    // then skips any spray whose chunk table has since changed length, so the
+    // engine ran the sim and drew nothing at all, silently, for 420 frames.
+    // A number a host builds on has to be final before the host can read it.
+    //
+    // Mutation: the lower clamp dropped — a small spray asks for
+    //   capacity/256 = 0 rows a chunk and `sizeChunks` divides by it.
+    // Mutation: the upper clamp dropped — a huge capacity asks for chunks
+    //   bigger than the staging buffers a host sized from `DEFAULT_CHUNK`.
+    // Mutation: the chunk left at `DEFAULT_CHUNK` — one chunk for anything up
+    //   to 1024 rows, which is the whole bug this beat is about.
+    // Mutation: `setChunk` ignored — G0's load-bearing scale evaporates.
+    const gpa = testing.allocator;
+
+    // Cut into `TARGET_CHUNKS`, before a single tick and before a host could
+    // have read it: 8192/256 = 32 rows a chunk.
+    {
+        const b = try Bench.init(gpa, 8192, 1);
+        defer b.deinit(gpa);
+        try testing.expectEqual(@as(u32, 32), b.spray.chunk);
+        try b.mount("gravity -1\n");
+        try b.tick(0, 0);
+        try testing.expectEqual(@as(u32, 32), b.spray.chunk); // and ticking never moves it
+        try testing.expectEqual(@as(usize, 8192 / 32), b.spray.dirtyChunks().len);
+    }
+
+    // A small spray asks for capacity/256 = 0 rows a chunk and is floored,
+    // because below `MIN_CHUNK` the dispatch is the work — and because
+    // `sizeChunks` divides by the answer.
+    {
+        const b = try Bench.init(gpa, 128, 1);
+        defer b.deinit(gpa);
+        try testing.expectEqual(spindrift.spray.MIN_CHUNK, b.spray.chunk);
+    }
+
+    // A very large one is capped at `DEFAULT_CHUNK` — not for cache reasons
+    // but because that is the number a host sized its staging buffers from
+    // (matryoshka's `spray_bridge.zig` allocates that many `GpuParticle` and
+    // asserts the chunk fits them). A bigger chunk runs off the end of them,
+    // in the host.
+    {
+        const b = try Bench.init(gpa, 512 * 1024, 1);
+        defer b.deinit(gpa);
+        try testing.expectEqual(spindrift.spray.DEFAULT_CHUNK, b.spray.chunk);
+    }
+
+    // And a host that said so wins, and ticking does not take it back. This
+    // is the door; G0's load-bearing scale depends on it.
+    {
+        const b = try Bench.init(gpa, 8192, 1);
+        defer b.deinit(gpa);
+        b.spray.setChunk(64);
+        try b.mount("gravity -1\n");
+        try b.tick(0, 0);
+        try testing.expectEqual(@as(u32, 64), b.spray.chunk);
+    }
+}
+
+
+
+
 test "dirty chunks: a chunk is dirty on every tick a live row was swept in it — born, moving, or dying — and quiet otherwise" {
     // Mutation: the sweep's mark dropped; nothing is ever dirty and the
     // renderer never uploads. The tick that reaps a chunk's last row must
@@ -1770,7 +1842,7 @@ test "dirty chunks: a chunk is dirty on every tick a live row was swept in it �
     const gpa = testing.allocator;
     const b = try Bench.init(gpa, 64, 1);
     defer b.deinit(gpa);
-    b.spray.chunk = 16; // four chunks
+    b.spray.setChunk(16); // four chunks
     b.spray.knobs = .{ .rate = fixed.fromInt(2), .life_ns = std.time.ns_per_s };
     try b.mount("perish\n");
     try b.tick(0, 0);
