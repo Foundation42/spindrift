@@ -1591,3 +1591,125 @@ check dropped.
 and LEAKED — the store owns those bytes. The change-only claim is
 observable without touching it, because a re-write replaces the allocation:
 the same pointer still being there is the assertion, and it costs nothing.
+
+## The neighbourhood, rebuilt — 2026-09-08
+
+**The complaint.** The playground's fireflies cost **44.5 ms a tick for 2481
+rows** — 18 µs a particle, which as Christian put it is a number you have to
+work quite hard to get. The note left the night before blamed the cell being
+1 m against a reach of 0.75. That was a quarter of the answer and the wrong
+quarter to lead with.
+
+**Measured first, in Debug, because Debug is the target.** `drift-run`
+reproduces the scene exactly (`--rate 550 --speed 0 --spread 0.7 --life 4500`
+gives 2482 rows; `spread` is a VELOCITY draw, so this is a 6 m cloud at ~11
+rows/m³ and not the degenerate pile the note assumed). A temporary probe over
+the six phases and inside `gatherNear`:
+
+| phase | µs/tick | | `gatherNear`, per row | |
+|---|---:|---|---|---:|
+| broadcasts | 13 | | candidates examined | **521** |
+| materialise | 0 | | kept | 52 (10%) |
+| spawn | 0.5 | | rejected on distance | 338 (65%) |
+| build | 76 | | rejected on CELL, not bucket | **130 (25%)** |
+| **sweep** | **17,558** | | cell probes finding an empty bucket | 17% |
+| reap | 11 | | | |
+
+The same scene with `near`/`sync` deleted from the kernel sweeps in 611 µs.
+So `near` was **96% of the tick**, and everything outside the sweep was
+rounding error. Two numbers in that table are the diagnosis: nine candidates
+in ten were thrown away, and a QUARTER of them for no geometric reason at all
+— they were rows the hash had put in the bucket, not rows the geometry had
+put near.
+
+**The complexity.** Per row the cost is `27 · cell³ · ρ · c` against useful
+work of `(4/3)πr³ · ρ`, so the waste is `6.44 · (cell/r)³` — 15× at cell 1 m
+and reach 0.75, which is the measured 10% hit rate. And since a life-bounded
+emitter has a roughly fixed volume, `ρ ∝ n`: the search is **O(n²)**, because
+`MAX_NEIGHBOURS` caps what a query KEEPS and never what it SCANS.
+
+**Three changes, one idea: build it the way the lattices already are.**
+`Lattice` is a dense grid over the spray's bounds that coarsens until it fits
+and says so. The neighbourhood hashed into a masked bucket table instead, and
+paid for it three times.
+
+1. **Dense, not hashed.** A hash needs a cell-equality test per candidate to
+   undo its own collisions; that test was rejecting a quarter of everything
+   examined. A dense cell index cannot collide, so the test is gone, the
+   per-row `neigh_cells` array is gone, and an empty cell is an empty range
+   instead of somebody else's rows.
+2. **The cell follows the rows.** Derived from the live bounds to at most one
+   cell per live row, stepping ×3/4 from a cell wider than the extent.
+   Halving multiplies the cell COUNT by eight, so the target can only be hit
+   to within that — measured, halving left the tick at 3.73 ms where
+   three-quarters reaches 3.59. Occupancy 4 → 2 → 1 gave 4.23 → 3.73 → 3.59.
+3. **The payload rides along.** `Item{pos, id}` in cell order, so the
+   candidate loop is a sequential walk instead of chasing `neigh_pos[other]`
+   by row id into another array.
+
+And a fourth that fell out of being dense: **x is the contiguous axis, so a
+whole RUN of cells along x is one range.** A 3×3×3 neighbourhood costs nine
+range lookups, not twenty-seven — and the range itself is computed from the
+radius rather than fixed at 3×3×3, which is why `near` no longer refuses a
+wide radius (see below).
+
+**Before that, the cheap half, and it is the one worth remembering.** The cap
+was being enforced on the STORE and not on the SCAN: `gatherNear` walked the
+rest of the cell to discard every row past the 64th. `near` reports the
+capped count and hands on the first `MAX_NEIGHBOURS`, so stopping there is
+**bit-identical** — same 64, same `crowded` — for a fortieth of the work in a
+crowd. 39.4 → 17.4 ms on its own, with the digest unchanged to prove it.
+
+**Result, Debug, `--jobs 1`, whole process:**
+
+| | crowd (playground's) | spread |
+|---|---:|---:|
+| morning | 39.4 ms | 16.8 ms |
+| + cap stops the scan | 17.4 | 12.1 |
+| + dense grid | **3.8** | **3.4** |
+
+Candidates per row went 521 → 197 with the cell rejects at zero, and range
+lookups 15.7 → 11.6 while covering a far larger volume. In the engine, same
+scene, same 420 frames: **44.506 ms → 2.470 ms** (ReleaseFast; the 44.5 was
+Debug, and ReleaseFast is a data point here, not the target).
+
+**A refusal deleted.** `near` refused a radius wider than the cell, and had
+to: the search walked a fixed 3×3×3, so a wider radius would have MISSED rows
+rather than found them. The range is the radius's now, so the refusal went
+with the constant that made it necessary. This is a prior decision reopened
+on Christian's standing rule — they keep us honest, they are not sacred.
+
+**Found while writing the gates, not by running them.** `sizeGrid` first
+started its search AT the widest extent, which gives dims of two on every
+axis — eight cells — and a spray of capacity four has room for five. Nothing
+downstream would have said a word. It now starts WIDER than the extent, so
+the grid is one cell whatever the rows are doing and only ever steps to a
+size that still fits; `cellCount() <= grid_starts.len - 1` is true by
+construction, and asserted.
+
+**Gates.** One new (`near`: the cap stops the scan) and two rewritten, both
+because the rewrite invalidated their claims rather than their subjects — the
+at-scale gate's bucket-SPREAD assertion became a grid-CUT assertion plus "the
+grid holds the live population exactly once", and the radius-refusal gate
+became a wide-radius-is-ANSWERED gate. **Mutations eight, all bitten:** the
+early-out one row early; the distance test dropped; `crowded` left false; the
+x-run ending at `hi[0]` instead of `hi[0] + 1`; `sizeGrid` never refining;
+`cellOf` dropping the z stride; the row counting itself; the cell range
+clamped back to the old ±1.
+
+**Two gate-writing lessons, both mine, both from mutations SURVIVING.**
+The first cut of the cap gate put all 100 rows on one spot, and two of its
+four mutations walked straight through: with one populated cell, cell VISIT
+ORDER cannot show, and with the far rows at high ids the cap fills before the
+distance test is ever reached. It needed three groups in two cells, with the
+too-far rows scanned FIRST. And the prefix assertion (`capped == uncapped
+cut short`) is only self-consistent — reorder the cells and both halves move
+together. Which 64 a crowd hands on is a picture, so the gate names them.
+
+**Open.** The sweep chunks at `DEFAULT_CHUNK = 1024`, so 2482 rows are 2.4
+chunks spread over the engine's 30 workers — about a tenth of the machine.
+`chunk` is also matryoshka's dirty-upload unit (`spray_bridge.zig` sizes
+staging buffers from `DEFAULT_CHUNK` and counts chunks from `spray.chunk`),
+so moving it is a change with the engine's GPU sweep in the blast radius and
+belongs to a beat that can run it. Measured here at `--jobs 8`: chunk 1024 →
+64 took the crowd 1285 → 419 µs in ReleaseFast, digest unchanged.

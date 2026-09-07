@@ -166,6 +166,13 @@ pub const Stats = struct {
     /// Rows whose neighbourhood was larger than `MAX_NEIGHBOURS`, so `near`
     /// handed on a truncated one. Said rather than absorbed.
     crowded: u32 = 0,
+    /// The neighbourhood grid this tick — the cell it was cut at and how many
+    /// cells that made. Zero on a spray whose kernel never says `near`. Said,
+    /// because the cell is derived now: a host that wonders why a query got
+    /// expensive should be able to read the answer rather than infer it, and
+    /// the thing this replaced was a constant nobody could see either.
+    neigh_cell: Fixed = 0,
+    neigh_cells: u32 = 0,
 };
 
 /// Rows per job. ≈ 80 bytes of row across the arrays, so a chunk streams
@@ -179,6 +186,21 @@ pub const DEFAULT_CHUNK: u32 = 1024;
 /// allocation. The cap is per row, so a dense spray says so instead of
 /// quietly costing more every tick.
 pub const MAX_NEIGHBOURS: u32 = 64;
+
+/// The finest a neighbourhood cell may be cut. A cloud with no extent at all
+/// — every row on one spot, which is what a spray looks like on its first
+/// tick — would otherwise shrink for ever, because a grid of ONE cell fits
+/// any cap however fine that cell is cut.
+pub const MIN_NEIGH_CELL: Fixed = fixed.fromRatio(1, 1024);
+
+/// One live row in the neighbourhood grid: where it is, and which row it is.
+/// The position rides ALONG rather than being chased through `neigh_pos` by
+/// id, so the candidate loop is a sequential walk over sixteen-byte items in
+/// cell order instead of a random access per candidate into another array.
+pub const Item = struct {
+    pos: [3]Fixed,
+    id: u32,
+};
 
 /// Grid points per axis a lattice may have. 33³ Q16.16 values is 144 KB
 /// per channel; a spray whose bounds want more gets a coarser cell and
@@ -338,25 +360,44 @@ pub const Spray = struct {
     staleness: u64 = 0,
     /// The first refusal's words from the last tick, for the host's log.
     last_refusal: rill.registry.Detail = .{},
-    /// The neighbourhood (see `buildNeighbourhood`). `neigh_starts` is
-    /// buckets+1 long so a bucket is `starts[b]..starts[b+1]`; `neigh_rows`
-    /// is capacity long; `neigh_bufs` is one `MAX_NEIGHBOURS` run per chunk,
-    /// which is what makes `near` row-local in the parallel sweep.
-    neigh_starts: []u32 = &.{},
-    neigh_rows: []u32 = &.{},
-    /// Each live row's CELL, filled by the build. A candidate is skipped
-    /// unless its cell is the cell being visited: two of the 27 cells around
-    /// a row can hash to one bucket, and without this the row in it would be
-    /// counted once per colliding cell. The distance test cannot catch that
-    /// — it is the same row at the same distance, twice.
-    neigh_cells: [][3]i32 = &.{},
-    /// Each live row's POSITION as of the build. `near` and `push` read
-    /// these and never `pop.pos`, because the sweep integrates a row the
-    /// instant its kernel is done — so by the time row 1 is swept, row 0 has
-    /// already moved. Reading live positions made a neighbourhood that
-    /// depended on the order rows happened to be visited in, which under
-    /// chunking is no order at all. One snapshot, taken once, read by
-    /// everybody: the same rule the lattices already follow.
+    /// The neighbourhood: a DENSE grid over the live rows' bounds, rebuilt
+    /// once a tick at the tail of the serial spawn. `grid_starts` is
+    /// cells+1 long so a cell is `starts[c]..starts[c+1]`; `grid_items` is
+    /// capacity long, in cell order; `neigh_bufs` is one `MAX_NEIGHBOURS`
+    /// run per chunk, which is what makes `near` row-local in the parallel
+    /// sweep.
+    ///
+    /// It was a HASH grid until 2026-09-08, and all three things that
+    /// changed were things that cost, measured on the playground's own
+    /// scene (2482 rows, 521 candidates examined per row to keep 52):
+    ///
+    /// - **Dense, not hashed.** A hash needs a cell-equality test per
+    ///   candidate to undo its own collisions, and that test was rejecting a
+    ///   QUARTER of every candidate examined — work with no geometric
+    ///   excuse. A dense cell index cannot collide, so the test is gone, the
+    ///   per-row cell array is gone, and an empty cell is an empty range
+    ///   instead of somebody else's rows. Only 17% of cell probes used to
+    ///   find a genuinely empty bucket.
+    /// - **The cell follows the rows** (`sizeGrid`), instead of being a
+    ///   constant no host ever set.
+    /// - **The payload rides along** (`Item`), instead of being chased by id.
+    grid_starts: []u32 = &.{},
+    grid_items: []Item = &.{},
+    /// The grid's corner, cell and shape, chosen by `sizeGrid` every build.
+    /// x is the CONTIGUOUS axis, which is what lets `gatherNear` read a whole
+    /// run of cells along x as one range: a 3×3×3 neighbourhood costs nine
+    /// range lookups, not twenty-seven.
+    grid_origin: [3]Fixed = .{ 0, 0, 0 },
+    grid_dims: [3]u32 = .{ 1, 1, 1 },
+    grid_cell: Fixed = fixed.ONE,
+    /// Each live row's POSITION as of the build, BY ROW ID — what `push` and
+    /// `sync` read for a neighbour the handle lane named, and what the query
+    /// row's own position comes from. Never `pop.pos`, because the sweep
+    /// integrates a row the instant its kernel is done, so by the time row 1
+    /// is swept row 0 has already moved. Reading live positions made a
+    /// neighbourhood that depended on the order rows happened to be visited
+    /// in, which under chunking is no order at all. One snapshot, taken once,
+    /// read by everybody: the same rule the lattices already follow.
     neigh_pos: [][3]Fixed = &.{},
     /// Each live row's USER CHANNELS as of the build. A word that reads a
     /// neighbour's state — `sync` reads its phase — must read the snapshot
@@ -366,19 +407,13 @@ pub const Spray = struct {
     /// would then depend on the sweep order, which under chunking is no
     /// order at all.
     neigh_user: []Fixed = &.{},
-    /// `buckets − 1`. Kept rather than derived: the first draft masked with
-    /// `starts.len − 2`, which is `buckets` itself, so every row landed in
-    /// one of two buckets.
-    neigh_mask: u32 = 0,
     neigh_bufs: []u32 = &.{},
-    /// The grid's cell, host-set. `near` refuses a radius larger than it.
-    neigh_cell: Fixed = fixed.ONE,
-    /// Set at mount when the kernel says `near`. A spray that never asks
-    /// builds nothing.
     /// What this spray's rows mean by their coordinate channels, said on
     /// the plane for a host to read. Null until a host sets it.
     appearance: ?Appearance = null,
     said_appearance: bool = false,
+    /// Set at mount when the kernel says `near`. A spray that never asks
+    /// builds nothing. (This comment had drifted onto `appearance`.)
     wants_neighbours: bool = false,
     /// Rows whose neighbourhood overflowed this tick; merged into `Stats`.
     crowded_rows: u32 = 0,
@@ -411,10 +446,6 @@ pub const Spray = struct {
     said_coarsened: ?u32 = null,
 
     pub fn init(gpa: std.mem.Allocator, capacity: u32, seed: u32, world: World) !Spray {
-        // Buckets: a power of two at least the capacity, so `bucketAt` masks
-        // rather than divides. One spare entry for the `starts[b+1]` end.
-        var nb: u32 = 64;
-        while (nb < capacity) nb <<= 1;
         var sp = Spray{
             .gpa = gpa,
             .pop = try Population.init(gpa, capacity),
@@ -422,16 +453,16 @@ pub const Spray = struct {
             .world = world,
         };
         errdefer sp.pop.deinit();
-        sp.neigh_starts = try gpa.alloc(u32, nb + 2);
-        errdefer gpa.free(sp.neigh_starts);
-        sp.neigh_rows = try gpa.alloc(u32, capacity);
-        errdefer gpa.free(sp.neigh_rows);
-        sp.neigh_cells = try gpa.alloc([3]i32, capacity);
-        errdefer gpa.free(sp.neigh_cells);
+        // One cell per row is the most the grid will ever be cut into, so the
+        // starts array is capacity+1 and `sizeGrid` coarsens until it fits.
+        // Capacity stays the only allocation, as it is for the lattices.
+        sp.grid_starts = try gpa.alloc(u32, @as(usize, capacity) + 1);
+        errdefer gpa.free(sp.grid_starts);
+        sp.grid_items = try gpa.alloc(Item, capacity);
+        errdefer gpa.free(sp.grid_items);
         sp.neigh_pos = try gpa.alloc([3]Fixed, capacity);
         errdefer gpa.free(sp.neigh_pos);
         sp.neigh_user = try gpa.alloc(Fixed, @as(usize, capacity) * population.USER_CHANNELS);
-        sp.neigh_mask = nb - 1;
         return sp;
     }
 
@@ -445,95 +476,187 @@ pub const Spray = struct {
     /// asks pays nothing.
     fn buildNeighbourhood(self: *Spray) void {
         if (!self.wants_neighbours) return;
-        const nb = self.neigh_starts.len - 1;
-        @memset(self.neigh_starts, 0);
         const p = &self.pop;
-        // Counting sort by bucket: count, prefix, scatter. Two passes over
-        // the live rows and no allocation.
+        // One pass to snapshot every live row and to find the bounds the grid
+        // is cut from. The spray computes bounds elsewhere for what it SAYS;
+        // this is the same walk and the snapshot has to happen anyway, so the
+        // grid costs no extra pass over the population.
+        var lo = [3]Fixed{ 0, 0, 0 };
+        var hi = [3]Fixed{ 0, 0, 0 };
+        var live: u32 = 0;
         var id: u32 = 0;
         while (id < p.capacity) : (id += 1) {
             if (!p.alive[id]) continue;
-            self.neigh_pos[id] = .{ p.pos[0][id], p.pos[1][id], p.pos[2][id] };
+            const q = [3]Fixed{ p.pos[0][id], p.pos[1][id], p.pos[2][id] };
+            self.neigh_pos[id] = q;
             @memcpy(self.neigh_user[@as(usize, id) * population.USER_CHANNELS ..][0..population.USER_CHANNELS], p.userOf(id));
-            self.neigh_cells[id] = .{ self.cellIndex(p.pos[0][id]), self.cellIndex(p.pos[1][id]), self.cellIndex(p.pos[2][id]) };
-            self.neigh_starts[self.bucketOf(id) + 1] += 1;
+            inline for (0..3) |a| {
+                if (live == 0 or q[a] < lo[a]) lo[a] = q[a];
+                if (live == 0 or q[a] > hi[a]) hi[a] = q[a];
+            }
+            live += 1;
+        }
+        self.sizeGrid(lo, hi, live);
+        const starts = self.grid_starts[0 .. self.cellCount() + 1];
+        @memset(starts, 0);
+        if (live == 0) return;
+
+        // Counting sort by cell: count, prefix, scatter. Two passes over the
+        // live rows and no allocation. The prefix leaves `starts[c + 1]`
+        // holding the BEGIN of cell c, which the scatter then walks forward
+        // until it is the end — so afterwards `starts[c]..starts[c + 1]` is
+        // cell c, with no third pass to fix up.
+        id = 0;
+        while (id < p.capacity) : (id += 1) {
+            if (!p.alive[id]) continue;
+            starts[self.cellOf(self.neigh_pos[id]) + 1] += 1;
         }
         var acc: u32 = 0;
-        for (self.neigh_starts) |*c| {
+        for (starts) |*c| {
             const n = c.*;
             c.* = acc;
             acc += n;
         }
-        var cursor = self.neigh_starts[1..];
-        _ = &cursor;
         id = 0;
         while (id < p.capacity) : (id += 1) {
             if (!p.alive[id]) continue;
-            const b = self.bucketOf(id);
-            self.neigh_rows[self.neigh_starts[b + 1]] = id;
-            self.neigh_starts[b + 1] += 1;
+            const c = self.cellOf(self.neigh_pos[id]);
+            self.grid_items[starts[c + 1]] = .{ .pos = self.neigh_pos[id], .id = id };
+            starts[c + 1] += 1;
         }
-        _ = nb;
     }
 
-    fn cellIndex(self: *const Spray, v: Fixed) i32 {
-        return @intCast(@divFloor(@as(i64, v), @as(i64, self.neigh_cell)));
+    /// The grid's corner, cell and shape for this tick's rows: the FINEST
+    /// cell that still cuts the grid into at most ONE CELL PER LIVE ROW.
+    ///
+    /// One per row and not one per four, measured on both scenes — the trade
+    /// is that a query walks `(cells per axis)²` ranges and tests
+    /// `occupancy × cells` rows, and 4 → 2 → 1 took the crowd's tick 4.2 →
+    /// 3.7 → 3.6 ms while the range lookups only went 6 → 9 → 12. Finer than
+    /// one per row is not reachable in any case: the starts array is the
+    /// capacity already committed, which is what makes this cost no
+    /// allocation. It replaces a 1 m constant no host ever set, which against
+    /// the first scene that leaned on it (reach 0.75) swept 27 m³ to answer a
+    /// question about 1.8.
+    ///
+    /// Stepping down rather than a cube root keeps this integer and keeps it
+    /// terminating; a cube root in Q16.16 would be a second definition of a
+    /// thing nothing else here needs.
+    fn sizeGrid(self: *Spray, lo: [3]Fixed, hi: [3]Fixed, live: u32) void {
+        self.grid_origin = lo;
+        if (live == 0) {
+            self.grid_dims = .{ 1, 1, 1 };
+            self.grid_cell = fixed.ONE;
+            return;
+        }
+        const extent = [3]Fixed{ hi[0] -% lo[0], hi[1] -% lo[1], hi[2] -% lo[2] };
+        const cap: u64 = @min(@as(u64, live), self.grid_starts.len - 1);
+        // Start WIDER than the extent, so the grid is one cell whatever the
+        // rows are doing, and only ever step to a cell that still fits. That
+        // is what keeps `cellCount() <= grid_starts.len - 1` true by
+        // construction rather than by hope: starting AT the widest extent
+        // gives dims of two on every axis — eight cells — which a spray of
+        // capacity four has no room for, and nothing downstream would have
+        // said so.
+        const widest = @max(extent[0], @max(extent[1], extent[2]));
+        var cell: Fixed = @max(widest, MIN_NEIGH_CELL) +| 1;
+        while (nextCell(cell) >= MIN_NEIGH_CELL and cellsFor(extent, nextCell(cell)) <= cap) cell = nextCell(cell);
+        self.grid_cell = cell;
+        inline for (0..3) |a| {
+            self.grid_dims[a] = @intCast(@divFloor(@as(i64, extent[a]), @as(i64, cell)) + 1);
+        }
+        std.debug.assert(self.cellCount() <= self.grid_starts.len - 1);
     }
 
-    fn bucketOf(self: *const Spray, id: u32) u32 {
-        const p = &self.pop;
-        const ix = self.cellIndex(p.pos[0][id]);
-        const iy = self.cellIndex(p.pos[1][id]);
-        const iz = self.cellIndex(p.pos[2][id]);
-        return self.bucketAt(ix, iy, iz);
+    /// The next cell size down. Three quarters, not a half: halving multiplies
+    /// the cell COUNT by eight, so the grid can only land on every eighth
+    /// size and the target is missed by up to that much — measured, halving
+    /// left the crowd's tick at 3.73 ms where three-quarters reaches 3.59.
+    /// Strictly decreasing for any `cell >= 4`, and `MIN_NEIGH_CELL` is 64.
+    fn nextCell(cell: Fixed) Fixed {
+        return @intCast(@divFloor(@as(i64, cell) * 3, 4));
     }
 
-    fn bucketAt(self: *const Spray, ix: i32, iy: i32, iz: i32) u32 {
-        const h = (@as(u32, @bitCast(ix)) *% 73856093) ^ (@as(u32, @bitCast(iy)) *% 19349663) ^ (@as(u32, @bitCast(iz)) *% 83492791);
-        return h & self.neigh_mask;
+    fn cellsFor(extent: [3]Fixed, cell: Fixed) u64 {
+        if (cell <= 0) return std.math.maxInt(u64);
+        var n: u64 = 1;
+        for (extent) |e| {
+            const d: u64 = @as(u64, @intCast(@divFloor(@as(i64, e), @as(i64, cell)))) + 1;
+            n = std.math.mul(u64, n, d) catch return std.math.maxInt(u64);
+        }
+        return n;
+    }
+
+    pub fn cellCount(self: *const Spray) u32 {
+        return self.grid_dims[0] * self.grid_dims[1] * self.grid_dims[2];
+    }
+
+    /// A world coordinate's cell index on one axis. UNCLAMPED, and i64 —
+    /// callers clamp into the grid, which is not a nicety: the bounds are cut
+    /// from the live rows, so a query's radius reaches past the edge by
+    /// design and there is nothing out there to find.
+    fn cellAxis(self: *const Spray, v: i64, a: usize) i64 {
+        return @divFloor(v - @as(i64, self.grid_origin[a]), @as(i64, self.grid_cell));
+    }
+
+    fn cellOf(self: *const Spray, q: [3]Fixed) u32 {
+        var ix: [3]u64 = undefined;
+        inline for (0..3) |a| {
+            const k = self.cellAxis(@as(i64, q[a]), a);
+            ix[a] = @intCast(std.math.clamp(k, 0, @as(i64, self.grid_dims[a]) - 1));
+        }
+        return @intCast((ix[2] * self.grid_dims[1] + ix[1]) * self.grid_dims[0] + ix[0]);
     }
 
     /// Every live row within `radius` of row `r`, itself excluded, into
-    /// `out`. The 27 buckets around the row are searched, which is why a
-    /// radius larger than the cell is refused by `near` rather than quietly
-    /// missing the rows a wider ring would have held.
+    /// `out`. Only the cells the sphere can actually touch are walked — not a
+    /// fixed 27 — and a run of them along x is ONE range, because x is the
+    /// contiguous axis. A radius narrower than the cell asks for two cells on
+    /// an axis and gets two; a radius wider than the cell asks for more and
+    /// gets more, which is why `near` no longer refuses one (it used to, and
+    /// had to: three cells an axis was all the old search could do, so a
+    /// wider radius would have MISSED rows rather than found them).
     pub fn gatherNear(self: *const Spray, r: u32, radius: Fixed, out: []u32) struct { n: u32, crowded: bool } {
         const r2 = fixed.mul(radius, radius);
-        const here = self.neigh_cells[r];
-        const cx = here[0];
-        const cy = here[1];
-        const cz = here[2];
+        const me = self.neigh_pos[r];
+        var lo: [3]u32 = undefined;
+        var hi: [3]u32 = undefined;
+        inline for (0..3) |a| {
+            const last: i64 = @as(i64, self.grid_dims[a]) - 1;
+            const l = self.cellAxis(@as(i64, me[a]) - @as(i64, radius), a);
+            const h = self.cellAxis(@as(i64, me[a]) + @as(i64, radius), a);
+            lo[a] = @intCast(std.math.clamp(l, 0, last));
+            hi[a] = @intCast(std.math.clamp(h, 0, last));
+        }
         var n: u32 = 0;
-        var crowded = false;
-        var dx: i32 = -1;
-        while (dx <= 1) : (dx += 1) {
-            var dy: i32 = -1;
-            while (dy <= 1) : (dy += 1) {
-                var dz: i32 = -1;
-                while (dz <= 1) : (dz += 1) {
-                    const cell = [3]i32{ cx + dx, cy + dy, cz + dz };
-                    const b = self.bucketAt(cell[0], cell[1], cell[2]);
-                    for (self.neigh_rows[self.neigh_starts[b]..self.neigh_starts[b + 1]]) |other| {
-                        if (other == r) continue;
-                        // Its cell, not just its bucket: see `neigh_cells`.
-                        if (!std.mem.eql(i32, &self.neigh_cells[other], &cell)) continue;
-                        var d2: i64 = 0;
-                        inline for (0..3) |a| {
-                            const d = self.neigh_pos[r][a] -% self.neigh_pos[other][a];
-                            d2 += @as(i64, fixed.mul(d, d));
-                        }
-                        if (d2 > @as(i64, r2)) continue;
-                        if (n >= out.len) {
-                            crowded = true;
-                            continue;
-                        }
-                        out[n] = other;
-                        n += 1;
+        var iz = lo[2];
+        while (iz <= hi[2]) : (iz += 1) {
+            var iy = lo[1];
+            while (iy <= hi[1]) : (iy += 1) {
+                const base = (@as(usize, iz) * self.grid_dims[1] + iy) * self.grid_dims[0];
+                const s = self.grid_starts[base + lo[0]];
+                const e = self.grid_starts[base + hi[0] + 1];
+                for (self.grid_items[s..e]) |it| {
+                    if (it.id == r) continue;
+                    var d2: i64 = 0;
+                    inline for (0..3) |a| {
+                        const d = me[a] -% it.pos[a];
+                        d2 += @as(i64, fixed.mul(d, d));
                     }
+                    if (d2 > @as(i64, r2)) continue;
+                    // The cap is reached: STOP, do not keep scanning. `near`
+                    // hands on the first `out.len` and reports the CAPPED
+                    // count, so every row found past here was already being
+                    // thrown away — the old code walked the rest of the cell
+                    // to discard it. In a crowd that was half the query.
+                    if (n >= out.len) return .{ .n = n, .crowded = true };
+                    out[n] = it.id;
+                    n += 1;
                 }
             }
         }
-        return .{ .n = n, .crowded = crowded };
+        // Walked every cell the sphere touches without filling `out`.
+        return .{ .n = n, .crowded = false };
     }
 
     /// A row's position as the neighbourhood saw it — the snapshot, not the
@@ -564,9 +687,8 @@ pub const Spray = struct {
 
     pub fn deinit(self: *Spray) void {
         self.unmountKernel();
-        self.gpa.free(self.neigh_starts);
-        self.gpa.free(self.neigh_rows);
-        self.gpa.free(self.neigh_cells);
+        self.gpa.free(self.grid_starts);
+        self.gpa.free(self.grid_items);
         self.gpa.free(self.neigh_pos);
         self.gpa.free(self.neigh_user);
         self.gpa.free(self.neigh_bufs);
@@ -739,6 +861,10 @@ pub const Spray = struct {
         self.spawnPhase(dt_ns, &stats);
         self.crowded_rows = 0;
         self.buildNeighbourhood(); // phase 3's tail: one snapshot of where everybody is
+        if (self.wants_neighbours) {
+            stats.neigh_cell = self.grid_cell;
+            stats.neigh_cells = self.cellCount();
+        }
         try self.sweepPhase(dt, dt_ns, js, &stats);
         stats.crowded = self.crowded_rows;
         self.reapPhase(&stats);

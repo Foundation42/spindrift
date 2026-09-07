@@ -303,10 +303,12 @@ fn kNear(ctx: *row.Ctx) row.Error!void {
     const radius = try ctx.scalar(0);
     var nb: [24]u8 = undefined;
     if (radius <= 0) return ctx.refuse("{s}: radius {s} is not positive — a neighbourhood with no width is a question with no answer", .{ ctx.op.name, fixed.format(radius, &nb) });
-    if (radius > s.neigh_cell) {
-        var cb: [24]u8 = undefined;
-        return ctx.refuse("{s}: radius {s} is wider than the neighbourhood's cell {s} — only the 27 cells around a row are searched, so a wider radius would miss rows rather than find them; raise the cell", .{ ctx.op.name, fixed.format(radius, &nb), fixed.format(s.neigh_cell, &cb) });
-    }
+    // There is no upper guard, and there was one until 2026-09-08: the search
+    // walked a fixed 3×3×3, so a radius wider than the cell would have MISSED
+    // rows rather than found them, and refusing was the only honest answer.
+    // The grid now derives the cell range from the radius itself, so a wide
+    // radius costs more and answers correctly. The refusal went with the
+    // constant that made it necessary.
     const buf = s.neighBuf(ctx.row_index);
     const got = s.gatherNear(ctx.row_index, radius, buf);
     if (got.crowded) s.crowded_rows += 1;
@@ -527,7 +529,7 @@ pub const WORDS = [_]rill.OpDef{
         .name = "near",
         .inputs = &.{.{ .name = "radius", .ty = Tag.number }},
         .outputs = &.{.{ .name = "count", .ty = Tag.number }},
-        .help = "Row word: how many live rows are within `radius` — and which ones, on the slate's handle lane under `crowd`, for `push` to read. A radius wider than the neighbourhood's cell refuses by name.",
+        .help = "Row word: how many live rows are within `radius` — and which ones, on the slate's handle lane under `crowd`, for `push` to read. Any positive radius is answerable; a wide one costs more cells, it does not miss rows.",
         .class = .reads,
         .routes = .anywhere,
         .publishes = &.{"crowd"},

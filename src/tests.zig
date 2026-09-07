@@ -1223,6 +1223,100 @@ test "near/push: a row leans away from the rows around it, a row alone does not 
 
 
 
+test "near: the cap STOPS the scan, and the capped answer is the uncapped one's prefix" {
+    // Paid for by the tick that made the cap worth thinking about: 2482 rows
+    // sitting inside ONE cell cost 39 ms a tick, and 97.5% of that was
+    // `gatherNear` walking the whole cell for every row to throw away
+    // everything past the 64th. `near` hands on the first `MAX_NEIGHBOURS`
+    // and reports the CAPPED count, so a row found past the cap was already
+    // being discarded — stopping there is the same answer for a fortieth of
+    // the work. This gate says "the same answer" out loud, because that claim
+    // is the whole licence for the early-out.
+    //
+    // Three groups, because one crowd in one cell cannot tell these apart —
+    // the first cut of this gate put all 100 rows on one spot and TWO of its
+    // four mutations walked straight through it:
+    //   ids  0– 9  x = 0.75, cell 0 — inside the visited cells, OUTSIDE the
+    //              reach, and scanned FIRST, so a lost distance test shows
+    //   ids 10–59  x = -0.25, cell -1 — a second populated cell, so the order
+    //              the 27 are visited in decides which 64 survive the cap
+    //   ids 60–99  x = 0, cell 0 — the crowd itself
+    //
+    // Mutation: the early-out fires one row early (`n + 1 >= out.len`) — the
+    //   capped run returns 63 and stops being the uncapped run's prefix.
+    // Mutation: the distance test dropped — ids 0–9 are 0.75 away with a
+    //   reach of 0.5 and get counted, and they are scanned before the cap
+    //   fills, so the count moves.
+    // Mutation: `crowded` left false on the early-out — a truncated
+    //   neighbourhood goes unsaid, which is the one thing a cap must not do.
+    // Mutation: the 27 cells visited in the other order — still 64 rows, but
+    //   no longer the SAME 64. Deliberate: which 64 a crowd hands on is a
+    //   picture, not an implementation detail, and it may not drift in silence.
+    const gpa = testing.allocator;
+    const cap = spindrift.spray.MAX_NEIGHBOURS; // 64
+    const b = try Bench.init(gpa, 128, 1);
+    defer b.deinit(gpa);
+    b.spray.knobs = .{ .rate = fixed.fromInt(100), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+    try b.mount("near 0.5 | write row.u0\n");
+    try b.tick(0, 0);
+    try b.tick(1, std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 100), b.spray.pop.live);
+    b.spray.knobs.rate = 0;
+
+    // Every value exact in Q16.16 — 0.9 is not, and an inexact reach is how a
+    // boundary gate ends up asserting a number the arithmetic never produces.
+    const p = &b.spray.pop;
+    var id: u32 = 0;
+    while (id < 100) : (id += 1) {
+        p.pos[0][id] = if (id < 10) fixed.fromRatio(3, 4) else if (id < 60) -fixed.fromRatio(1, 4) else 0;
+        p.pos[1][id] = 0;
+        p.pos[2][id] = 0;
+        inline for (0..3) |a| p.vel[a][id] = 0;
+    }
+    try b.tick(2, 2 * std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 0), b.spray.last.refusals);
+
+    // The far ten see only each other: nine, uncrowded, and NOT the ninety
+    // rows a quarter- and three-quarter-cell away. The other ninety are over
+    // the cap and report the cap, not their true size.
+    id = 0;
+    while (id < 100) : (id += 1) {
+        const want: i32 = if (id < 10) 9 else @intCast(cap);
+        try testing.expectEqual(fixed.fromInt(want), p.userOf(id)[0]);
+    }
+    // Ninety rows were truncated and the spray SAID so — once each.
+    try testing.expectEqual(@as(u32, 90), b.spray.last.crowded);
+
+    // And the claim itself: what a capped buffer returns is exactly what an
+    // uncapped one returns, cut short. The same query twice over the same
+    // snapshot, once with room for everybody. Row 60 sits in the crowd and
+    // reaches into both populated cells, so its 64 are drawn from two.
+    var big: [128]u32 = undefined;
+    var small: [cap]u32 = undefined;
+    const whole = b.spray.gatherNear(60, fixed.HALF, &big);
+    const cut = b.spray.gatherNear(60, fixed.HALF, &small);
+    try testing.expectEqual(@as(u32, 89), whole.n); // 50 in cell -1, 39 in cell 0, itself excluded
+    try testing.expect(!whole.crowded);
+    try testing.expectEqual(cap, cut.n);
+    try testing.expect(cut.crowded);
+    try testing.expectEqualSlices(u32, big[0..cap], small[0..cap]);
+
+    // Which 64, exactly. The prefix check above is only self-consistent — run
+    // the 27 cells in the other order and both halves move together, so it
+    // sees nothing. This is the absolute claim, and it locks all three things
+    // that decide the picture: the cells are walked -1 → +1 on each axis (so
+    // cell -1's fifty are met before the home cell's), a bucket is scattered
+    // in ascending row id, and the cap cuts the tail off. Row 60 skips itself
+    // and the ten too far away, and stops fourteen into its own cell.
+    var want: [cap]u32 = undefined;
+    for (0..50) |i| want[i] = @intCast(10 + i); // cell -1, ids 10–59
+    for (0..14) |i| want[50 + i] = @intCast(61 + i); // home cell, ids 61–74
+    try testing.expectEqualSlices(u32, &want, small[0..cap]);
+}
+
+
+
+
 test "appearance: a spray SAYS what its coordinate channels mean, once, and a channel it has not got is refused when set" {
     // The contract a host bridges (Christian, 2026-09-07: "Matryoshka can
     // provide the bridge as long as the contract is there"). Spindrift
@@ -1361,18 +1455,26 @@ test "sync: two coupled rows meet at their mean exactly, an uncoupled pair does 
     try testing.expectEqual(fixed.ONE / 8, p.userOf(0)[0]);
 }
 
-test "the neighbourhood at scale: every count is what the geometry says, and the rows are spread across the buckets" {
+test "the neighbourhood at scale: every count is what the geometry says, and the grid actually cuts the rows up" {
     // A 4x4x4 lattice at half-cell spacing. Two mutations survived a
     // three-row scene and needed this one, which is the chunking gate's rule
     // restated: a grid's bugs are invisible until there is a grid.
     //
-    // Mutation: the cell check dropped — two of the 27 cells around a row
-    // hash to one bucket, its rows are counted twice, and the total exceeds
-    // the geometry's.
-    // Mutation: the bucket mask is `buckets` and not `buckets - 1` — every
-    // row lands in one of TWO buckets. The counts stay right, because the
-    // cell check still filters, so this is a gate on the SPREAD: the hash is
-    // doing no work and every query has become a scan of half the population.
+    // It was a HASH grid until 2026-09-08 and the mutations it was paid for
+    // were the hash's — a dropped cell-equality check counting a colliding
+    // bucket's rows twice, and a mask of `buckets` instead of `buckets - 1`
+    // putting every row in one of two buckets. Neither exists now; a dense
+    // cell index cannot collide and there is no mask. What survives is the
+    // half that was never about the hash: the COUNT is the geometry's, and
+    // the grid has to be doing work for that to mean anything.
+    //
+    // Mutation: `sizeGrid` never refines (the first cell is kept) — one cell
+    //   holds all 64 rows, every count is still right, and every query has
+    //   become a scan of the whole population. That is what `cells` catches.
+    // Mutation: the x-run ends at `hi[0]` instead of `hi[0] + 1` — the last
+    //   cell of every run is missed and the total falls short.
+    // Mutation: `cellOf` drops the z stride — rows pile onto the wrong cells
+    //   and the total moves.
     const gpa = testing.allocator;
     const b = try Bench.init(gpa, 128, 1);
     defer b.deinit(gpa);
@@ -1399,16 +1501,24 @@ test "the neighbourhood at scale: every count is what the geometry says, and the
     for (0..64) |i| total += p.userOf(@intCast(i))[0];
     try testing.expectEqual(@as(i64, 288) * fixed.ONE, total);
 
-    // And the hash is doing its job: eight distinct cells, spread.
+    // And the grid is doing its job. 64 rows over a 1.5 m lattice, one cell
+    // per row allowed: the cell lands fine enough to give a cell per axis
+    // step, so every row gets its own and a query walks a handful of them
+    // rather than the population. Asserted as a floor, not the exact number,
+    // because the exact number is the cell-stepping ratio's business and this
+    // gate is about the grid existing.
+    try testing.expect(b.spray.cellCount() >= 8);
     var used: u32 = 0;
-    var bkt: u32 = 0;
-    while (bkt <= b.spray.neigh_mask) : (bkt += 1) {
-        if (b.spray.neigh_starts[bkt + 1] > b.spray.neigh_starts[bkt]) used += 1;
+    for (0..b.spray.cellCount()) |c| {
+        if (b.spray.grid_starts[c + 1] > b.spray.grid_starts[c]) used += 1;
     }
-    try testing.expect(used >= 4);
+    try testing.expect(used >= 8);
+    // Nobody was lost or duplicated on the way in: the grid holds the live
+    // population exactly once.
+    try testing.expectEqual(@as(u32, 64), b.spray.grid_starts[b.spray.cellCount()]);
 }
 
-test "near/push: mount refuses a `push` with no `near` above it, and `near` refuses a radius wider than the cell" {
+test "near/push: mount refuses a `push` with no `near` above it, and a WIDE radius is answered, not refused" {
     // Both are the slate's rules doing their job on a real pair: a consumer
     // of a name nobody says, and one that reads above the line that says it.
     // Mutation: the handle lane's mount checks dropped — `push` alone mounts
@@ -1422,13 +1532,32 @@ test "near/push: mount refuses a `push` with no `near` above it, and `near` refu
     try testing.expectError(error.Mount, b.spray.mountKernel(&b.reg, "k", "push 5\nnear 0.5 | write row.u0\n", &diag));
     try testing.expect(std.mem.indexOf(u8, diag.text(), "above the line that says it") != null);
 
-    // A radius wider than the cell is a per-ROW refusal, not a mount one:
-    // the cell is the host's and may change between ticks.
+    // A radius wider than the grid's cell REFUSED until 2026-09-08, and had
+    // to: the search walked a fixed 3x3x3, so a wide radius would have missed
+    // rows rather than found them. The range now comes from the radius, so
+    // the honest answer is the answer. Three rows a cell and a half apart, a
+    // reach of 4: the far one is found, and it is found because the range
+    // spans the grid and not because the cell happens to be large.
+    //
+    // Mutation: the cell range hard-coded back to the row's own cell +/- 1 —
+    //   the grid is three cells across, so row 0 misses row 2 and counts one.
     try b.spray.mountKernel(&b.reg, "k", "near 4 | write row.u0\n", &diag);
-    b.spray.knobs = .{ .rate = fixed.fromInt(1), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+    b.spray.knobs = .{ .rate = fixed.fromInt(3), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
     try b.tick(0, 0);
     try b.tick(1, std.time.ns_per_s);
-    try testing.expect(b.spray.last.refusals > 0);
+    try testing.expectEqual(@as(u32, 3), b.spray.pop.live);
+    b.spray.knobs.rate = 0;
+    const p = &b.spray.pop;
+    inline for (.{ 0, 1, 2 }, .{ 0, fixed.fromRatio(3, 2), fixed.fromInt(3) }) |id, x| {
+        p.pos[0][id] = x;
+        p.pos[1][id] = 0;
+        p.pos[2][id] = 0;
+        inline for (0..3) |a| p.vel[a][id] = 0;
+    }
+    try b.tick(2, 2 * std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 0), b.spray.last.refusals);
+    try testing.expect(b.spray.grid_dims[0] >= 3); // the reach really does span cells
+    inline for (.{ 0, 1, 2 }) |id| try testing.expectEqual(fixed.fromInt(2), p.userOf(id)[0]);
 }
 
 test "slate: `stick` says contact on the landing tick and on no other — the EVENT, where row.stuck is the state" {
