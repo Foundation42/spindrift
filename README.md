@@ -69,6 +69,15 @@ zig build run -- --kernel my.rill --rill hud.rill   # your kernel, a rill drivin
 zig build run -- --kernel kernels/smoke.rill --gravity 0.5 --seed plane.drift.@em.lean=-1 \
   --channel '$wind:0.01:1000' --channel '$dankness:0.001:2000' --samples '$wind:0.5' \
   --casts '$dankness:0.02' --rill wind.rill --ear '$dankness@0,3,0'   # smoke in the wind
+zig build run -- --kernel kernels/fire.rill --rate 380 --speed 4.2 --spread 1.6 --life 2600 \
+  --gravity -9.8 --pos 0,0.15,0 --aim 0,1,0 --ticks 220 --world floor \
+  --seed plane.drift.@em.cool=1.25 --seed plane.drift.@em.plunge=10 --seed plane.drift.@em.chill=0.75 \
+  --seed plane.drift.@em.smoke=0.875 --seed plane.drift.@em.quench=5.625 \
+  --seed plane.drift.@em.thin=0.8125 --seed plane.drift.@em.settle=17.5 \
+  --seed plane.drift.@em.puff=0.3 --seed plane.drift.@em.grain=0.06 --dump fire.struple
+  # the manifold walk: rows leave with no history and the world writes it —
+  # a landed ember quenches (cooled .98, sooted .95, dense), one still in
+  # the air blows thin (.48/.36/.34). No colour is written anywhere.
 python3 tools/read_dump.py embers.struple   # the struple Python port reads it back
 zig build test                              # the gates
 ```

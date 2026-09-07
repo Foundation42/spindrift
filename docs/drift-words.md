@@ -16,6 +16,18 @@ on the write node and lands nothing, beat 6), `row.u0`–`row.u3`;
 the spray's knobs
 are `plane.drift.@self.<knob>`, broadcast to every row.
 
+**A user channel carrying a manifold coordinate must stay in range, and
+nothing here will tell you if it does not.** `row.alpha` carries bounds so
+a bad curve refuses on the write node rather than looking plausible
+(campaign 2, ruling 3); `row.u0`–`u3` cannot, because a user channel is
+whatever a kernel means by it. When one of them is an appearance
+coordinate the cost of leaving [0, 1] is not a clamp — the reader MIRRORS.
+loam's `Set.fold` reflects a query point back into the cube on every axis
+(`loam/src/rbf.zig:145-155`), so a `cooled` of 1.2 reads at 0.8 and an
+over-cooled row comes back looking HOT. Spell every state line as an
+approach that saturates — `relax` toward the target, never a bare add —
+and the range holds by construction rather than by care.
+
 ```rill
 // embers.rill
 spawn
