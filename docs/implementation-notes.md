@@ -1557,3 +1557,37 @@ across the cloud and wraps. Local coherence far above global, with a
 spatial phase ramp, is a travelling wave and nothing else. Nothing in the
 kernel makes a wave; every row is a lone oscillator that can see about
 forty neighbours.
+
+
+**The appearance contract, 2026-09-07.** Christian: *"dependency on loam
+isn't needed, just a loam like interface to fields, and Matryoshka can
+provide the bridge as long as the contract is there."* So the contract now
+exists and spindrift still evaluates nothing.
+
+A spray declares `Appearance{ coord, manifold }` — which user channels
+carry the coordinate, and a NAME the host resolves — and says it on the
+plane beside its count and bounds, once, change-only. `manifold` is
+resolved by nobody here: matryoshka resolves it to a loam RBF set and reads
+it in a shader. That is the seam `World` and `Fields` already have —
+spindrift declares it, a host fills it, the mock fills it for the gates,
+and no dependency travels in either direction. It also means no struple
+decoder anywhere it was not already needed, which was the other half of
+the ask.
+
+Until this, what `row.u0`–`u2` MEANT lived in a comment and a reader knew
+by agreement — which is precisely how the fire manifold got authored upside
+down that morning with every number still in range and the picture the only
+witness. A declaration is the fix for that class of bug, not more care.
+
+**Gate:** says nothing until there is something to say (a spray whose rows
+mean nothing in particular must not publish a default a host could read as
+a promise); says it when set; does NOT say it again on a tick that changed
+nothing; says it again when a host changes it; refuses a channel the
+population has not got, at the door. **Mutations three, all bitten:**
+`said_appearance` never set; the change-only guard dropped; the channel
+check dropped.
+
+**Found:** the first cut cleared the mock's store to check "not re-said"
+and LEAKED — the store owns those bytes. The change-only claim is
+observable without touching it, because a re-write replaces the allocation:
+the same pointer still being there is the assertion, and it costs nothing.

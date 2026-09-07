@@ -1222,6 +1222,61 @@ test "near/push: a row leans away from the rows around it, a row alone does not 
 
 
 
+
+test "appearance: a spray SAYS what its coordinate channels mean, once, and a channel it has not got is refused when set" {
+    // The contract a host bridges (Christian, 2026-09-07: "Matryoshka can
+    // provide the bridge as long as the contract is there"). Spindrift
+    // declares the seam and evaluates NOTHING — `manifold` is a name the
+    // host resolves, the way `World` and `Fields` are already filled by a
+    // host and by a mock here. No dependency travels either way.
+    //
+    // Until this, what `row.u0`–`u2` MEANT lived in a comment, and that is
+    // exactly how the fire manifold got authored upside down with every
+    // number still in range.
+    //
+    // Mutation: `said_appearance` never set — the declaration is re-said on
+    // every tick, so a host watching for changes sees a change that is not
+    // one, every frame, for ever.
+    // Mutation: `check` dropped — a coordinate naming a channel the
+    // population has not got is accepted, and the host reads a number
+    // nobody wrote.
+    const gpa = testing.allocator;
+    const b = try Bench.init(gpa, 4, 1);
+    defer b.deinit(gpa);
+
+    // Says nothing until there is something to say: a spray whose rows mean
+    // nothing in particular must not publish a default a host could read as
+    // a promise.
+    try b.tick(0, 0);
+    try testing.expect(b.mock.store.get("plane.drift.@em.appearance") == null);
+
+    try b.spray.setAppearance(.{ .coord = .{ 0, 1, 2 }, .manifold = "fire" });
+    try b.tick(1, std.time.ns_per_s);
+    const said = b.mock.store.get("plane.drift.@em.appearance") orelse return error.TestUnexpectedResult;
+    // The host reads a name and three channel indices; spindrift resolves
+    // neither and evaluates neither.
+    try testing.expect(std.mem.indexOf(u8, said, "fire") != null);
+    try testing.expect(std.mem.indexOf(u8, said, "manifold") != null);
+
+    // A DECLARATION changes when a host changes it and not otherwise. A
+    // re-write would replace the stored bytes, so the same allocation still
+    // being there is the claim — and it costs nothing, where clearing the
+    // store to look leaks what the store owns (which is how this gate first
+    // failed).
+    try b.tick(2, 2 * std.time.ns_per_s);
+    const again = b.mock.store.get("plane.drift.@em.appearance").?;
+    try testing.expectEqual(said.ptr, again.ptr);
+
+    // Setting it again IS a change, and is said again.
+    try b.spray.setAppearance(.{ .coord = .{ 3, 1, 2 }, .manifold = "soot" });
+    try b.tick(3, 3 * std.time.ns_per_s);
+    const third = b.mock.store.get("plane.drift.@em.appearance").?;
+    try testing.expect(std.mem.indexOf(u8, third, "soot") != null);
+
+    // And a channel this population has not got is refused at the door.
+    try testing.expectError(error.BadAppearance, b.spray.setAppearance(.{ .coord = .{ 0, 1, spindrift.population.USER_CHANNELS }, .manifold = "x" }));
+}
+
 test "sync: two coupled rows meet at their mean exactly, an uncoupled pair does not move, and the phase wraps" {
     // funideas §6's `synchronise`, and the thing a field of them does is
     // travelling waves. The claim gated here is the single step, because

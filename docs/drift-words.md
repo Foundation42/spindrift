@@ -44,6 +44,22 @@ arrives next tick, and a value that crosses a tick boundary is state owing
 a dump. A `slate.<name>` nothing says, or one read above the line that says
 it, is refused at mount by name.
 
+**A spray SAYS what its coordinate channels mean.** `fire.rill` writes a
+point in an appearance manifold to `row.u0`–`u2` and no colour at all;
+`motes.rill` writes a phase to `row.u0`. What those channels MEAN is a
+declaration, not a comment: a host sets `Spray.setAppearance(.{ .coord =
+.{0, 1, 2}, .manifold = "fire" })` and the spray says it on the plane at
+`plane.drift.@<name>.appearance`, once, change-only, beside its count and
+bounds. A channel the population has not got is refused when it is set.
+
+Spindrift resolves `manifold` and evaluates NOTHING against it. It is a
+name the host resolves — matryoshka resolves it to a loam RBF set and reads
+it in a shader — which is the same seam `World` and `Fields` already have:
+spindrift declares it, a host fills it, the mock fills it for the gates,
+and no dependency travels in either direction. Until this the meaning lived
+in a comment, which is how the fire manifold got authored upside down with
+every number still in range.
+
 **A user channel carrying a manifold coordinate must stay in range, and
 nothing here will tell you if it does not.** `row.alpha` carries bounds so
 a bad curve refuses on the write node rather than looking plausible

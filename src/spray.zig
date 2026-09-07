@@ -80,6 +80,40 @@ pub const Knobs = struct {
 /// them, and may not put its own knobs beside them.
 pub const SPRAY_KNOBS = [_][]const u8{ "rate", "speed", "spread", "life" };
 
+/// **What the row's appearance coordinate IS** — the contract a host reads,
+/// and the one thing about it spindrift does NOT do, which is evaluate it.
+///
+/// `fire.rill` writes a point in an appearance manifold to `row.u0`–`u2`
+/// and no colour at all; `motes.rill` writes a phase to `row.u0`. Until
+/// this, what those channels MEANT lived in a comment, and a reader had to
+/// know by agreement — which is exactly how the fire manifold got authored
+/// upside down on 2026-09-07 with every number still in range. A spray now
+/// SAYS it, on the plane, beside its count and bounds.
+///
+/// Spindrift never resolves `manifold` and never evaluates anything against
+/// it. It is a name the HOST resolves — matryoshka resolves it to a loam
+/// RBF set and reads it in a shader — which is the same shape `World` and
+/// `Fields` already have: spindrift declares the seam, a host fills it, and
+/// the mock fills it for the gates. No dependency travels in either
+/// direction, and no float enters the sim: the coordinate is Q16.16 in the
+/// row and stays there until it leaves.
+pub const Appearance = struct {
+    /// Which user channels carry the coordinate, in order.
+    coord: [3]u8 = .{ 0, 1, 2 },
+    /// What the host reads the coordinate AGAINST. A name, resolved by the
+    /// host; empty means the host's own default.
+    manifold: []const u8 = "",
+
+    /// A channel this population does not have is refused when it is SET,
+    /// not clamped and not discovered later by a host reading a coordinate
+    /// that was never written.
+    pub fn check(self: Appearance) error{BadAppearance}!void {
+        for (self.coord) |c| {
+            if (c >= population.USER_CHANNELS) return error.BadAppearance;
+        }
+    }
+};
+
 /// `samples $wind cell 0.5` on the archetype: a channel the kernel may
 /// `hear`, and the lattice's declared cell size in cells.
 pub const Sampled = struct {
@@ -341,6 +375,10 @@ pub const Spray = struct {
     neigh_cell: Fixed = fixed.ONE,
     /// Set at mount when the kernel says `near`. A spray that never asks
     /// builds nothing.
+    /// What this spray's rows mean by their coordinate channels, said on
+    /// the plane for a host to read. Null until a host sets it.
+    appearance: ?Appearance = null,
+    said_appearance: bool = false,
     wants_neighbours: bool = false,
     /// Rows whose neighbourhood overflowed this tick; merged into `Stats`.
     crowded_rows: u32 = 0,
@@ -513,6 +551,15 @@ pub const Spray = struct {
     pub fn neighBuf(self: *Spray, r: u32) []u32 {
         const c = r / self.chunk;
         return self.neigh_bufs[c * MAX_NEIGHBOURS ..][0..MAX_NEIGHBOURS];
+    }
+
+    /// Declare what the rows' coordinate channels mean. Refuses a channel
+    /// this population does not have, by name, rather than leaving a host to
+    /// read a coordinate nobody wrote.
+    pub fn setAppearance(self: *Spray, a: Appearance) error{BadAppearance}!void {
+        try a.check();
+        self.appearance = a;
+        self.said_appearance = false;
     }
 
     pub fn deinit(self: *Spray) void {
@@ -1131,6 +1178,20 @@ pub const Spray = struct {
         // sentry can watch it and not only the Spray applet. A function of
         // the bounds and the declared cell alone — fed inputs — so a
         // coarsened run replays byte-identical (gated).
+        // The appearance is a DECLARATION, not a measurement: it changes
+        // when a host changes it and not otherwise, so it is said once and
+        // then not again. Said at all only when there is one — a spray whose
+        // rows mean nothing in particular says nothing, rather than saying a
+        // default somebody might read as a promise.
+        if (self.appearance) |ap| {
+            if (!self.said_appearance) {
+                pk.reset();
+                try packAppearance(self.gpa, &pk, ap);
+                try self.write(plane, &path_buf, "appearance", pk.bytes());
+                self.said_appearance = true;
+            }
+        }
+
         const now_coarsened = self.coarsened();
         if (self.said_coarsened != now_coarsened) {
             pk.reset();
@@ -1210,6 +1271,25 @@ pub const Spray = struct {
 
 /// `{max: {x, y, z}, min: {x, y, z}}` in cells, as f64 — the plane is the
 /// world's and the world reads floats; this is the boundary, once per tick.
+fn packAppearance(gpa: std.mem.Allocator, pk: *struple.Packer, ap: Appearance) !void {
+    var arena_impl = std.heap.ArenaAllocator.init(gpa);
+    defer arena_impl.deinit();
+    const a = arena_impl.allocator();
+    // An array's child is the elements' encodings run together — one packer
+    // for the three, then framed as the array.
+    var elems = struple.Packer.init(a);
+    for (ap.coord) |c| try elems.appendInt(c);
+    var coord_p = struple.Packer.init(a);
+    try coord_p.appendArray(elems.bytes());
+    var man_p = struple.Packer.init(a);
+    try man_p.appendString(ap.manifold);
+    var k_coord = struple.Packer.init(a);
+    try k_coord.appendString("coord");
+    var k_man = struple.Packer.init(a);
+    try k_man.appendString("manifold");
+    try pk.appendMap(&.{ .{ k_man.bytes(), man_p.bytes() }, .{ k_coord.bytes(), coord_p.bytes() } });
+}
+
 fn packBounds(gpa: std.mem.Allocator, pk: *struple.Packer, b: [6]Fixed) !void {
     var arena_impl = std.heap.ArenaAllocator.init(gpa);
     defer arena_impl.deinit();
