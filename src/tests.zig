@@ -1317,6 +1317,168 @@ test "near: the cap STOPS the scan, and the capped answer is the uncapped one's 
 
 
 
+test "deposit: a row leaves a mark that ACCUMULATES, where the spray's cast is one aggregate replaced" {
+    // funideas §8: "a particle shouldn't necessarily disappear without
+    // consequence... particles become the transport mechanism connecting
+    // simulations." The whole point is the difference from `casts`, so this
+    // gate runs BOTH on one store, on one channel, and asserts they behave
+    // oppositely — which the first cut of it claimed in a comment and did
+    // not do, and two of its four mutations walked through the gap.
+    //
+    // Mutation: a mark stored with the AGGREGATE flag — nothing changes until
+    //   a cast lands, and then the cast replaces one of the marks instead of
+    //   standing beside them. The cast below is what makes that show.
+    // Mutation: the slot not cleared in the flush — a row that deposited once
+    //   deposits for ever. It takes a kernel that STOPS asking while still
+    //   mounted to see it; re-mounting a kernel without `deposit` clears the
+    //   channel and the flush never reads the slot at all.
+    // Mutation: the radius taken as a constant rather than `row.size` — the
+    //   size-0 rows leave marks they should not.
+    // Mutation: the dead-row check dropped — a row reaped this tick marks the
+    //   world on its way out.
+    const gpa = testing.allocator;
+    const b = try FieldBench.init(gpa, 8, 1);
+    defer b.deinit(gpa);
+    try b.fields.declare(.{ .name = "$soot", .default_decay_ns = 0 }); // no decay: the sum is the count
+    b.spray.knobs = .{ .rate = fixed.fromInt(3), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+    // The amount is a ROW channel, so the same mounted kernel can stop asking.
+    try b.mount("row.seed | mul 0 | add 0.25 | write row.size\ndeposit $soot row.u0\n");
+    try b.tick(0, 0);
+    try b.tick(1, std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 3), b.spray.pop.live);
+    b.spray.knobs.rate = 0;
+    for (0..3) |i| b.spray.pop.userOf(@intCast(i))[0] = fixed.ONE;
+
+    const at = [3]f32{ 0, 0, 0 };
+    try b.tick(2, 2 * std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 3), b.spray.last.deposits);
+    const one = b.fields.sample("$soot", at, true, &.{}).?.value;
+    try testing.expect(one > 0);
+
+    // Another tick: three more marks ON TOP, not three replacing three.
+    try b.tick(3, 3 * std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 3), b.spray.last.deposits);
+    const two = b.fields.sample("$soot", at, true, &.{}).?.value;
+    try testing.expectApproxEqRel(@as(f32, 2), two / one, 1e-4);
+
+    // The SPRAY now casts on the same channel. A cast is one standing
+    // aggregate the host replaces; it must stand BESIDE the six marks and
+    // replace none of them, however many ticks it runs for.
+    b.spray.casts = &.{.{ .channel = "$soot", .per_row_amplitude = 0.5, .radius = .{ .fixed = 0.25 } }};
+    try b.tick(4, 4 * std.time.ns_per_s);
+    const with_cast = b.fields.sample("$soot", at, true, &.{}).?.value;
+    const n_after_first_cast = b.fields.deposits.items.len;
+    try b.tick(5, 5 * std.time.ns_per_s); // the cast restated, the marks piling up
+    const later = b.fields.sample("$soot", at, true, &.{}).?.value;
+    try testing.expectEqual(n_after_first_cast + 3, b.fields.deposits.items.len);
+    // And WHAT they are is the claim. `castThunk` replaces the first
+    // aggregate it finds under this owner and channel, in place — so a mark
+    // wearing the aggregate flag is a mark the cast eats, and the count above
+    // cannot see it because the replacement is in place. Twelve marks and one
+    // cast: mutate the flag and it is nought marks and thirteen casts.
+    var marks: usize = 0;
+    var aggregates: usize = 0;
+    for (b.fields.deposits.items) |d| {
+        if (d.aggregate) aggregates += 1 else marks += 1;
+    }
+    try testing.expectEqual(@as(usize, 1), aggregates);
+    try testing.expectEqual(b.fields.deposits.items.len - 1, marks);
+    // Two more ticks of marks (three each) went on; the cast did not double.
+    try testing.expect(later > with_cast);
+    try testing.expectApproxEqRel(later - with_cast, two / 2, 5e-2);
+
+    // And the mark STOPS when the kernel stops asking — the same kernel,
+    // still mounted, with nothing left to deposit.
+    b.spray.casts = &.{};
+    for (0..3) |i| b.spray.pop.userOf(@intCast(i))[0] = 0;
+    const before_quiet = b.fields.sample("$soot", at, true, &.{}).?.value;
+    try b.tick(6, 6 * std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 0), b.spray.last.deposits);
+    try b.tick(7, 7 * std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 0), b.spray.last.deposits);
+    try testing.expectApproxEqRel(before_quiet, b.fields.sample("$soot", at, true, &.{}).?.value, 1e-4);
+
+    // A row REAPED this tick does not mark the world on its way out. The reap
+    // runs before the cast phase, so a row that was swept (and asked) and then
+    // died has a full slot and a false `alive` bit when the flush walks past.
+    {
+        const d = try FieldBench.init(gpa, 8, 1);
+        defer d.deinit(gpa);
+        try d.fields.declare(.{ .name = "$soot", .default_decay_ns = 0 });
+        // Rate 4 over the half-second first tick is two rows, exactly.
+        d.spray.knobs = .{ .rate = fixed.fromInt(4), .speed = 0, .spread = 0, .life_ns = std.time.ns_per_s };
+        try d.mount("row.seed | mul 0 | add 0.25 | write row.size\ndeposit $soot 1\nperish\n");
+        try d.tick(0, 0);
+        try d.tick(1, std.time.ns_per_s / 2); // born, and they mark
+        try testing.expectEqual(@as(u32, 2), d.spray.pop.live);
+        try testing.expectEqual(@as(u32, 2), d.spray.last.deposits);
+        d.spray.knobs.rate = 0;
+        // Life is converted to TICKS at spawn (ledger: ticks in the row,
+        // duration on the knob), so run on until the reap actually happens
+        // and assert on THAT tick — the one where a row is swept, asks, and
+        // then dies before the flush walks past it.
+        var f: u64 = 2;
+        while (d.spray.pop.live > 0 and f < 12) : (f += 1) try d.tick(f, f * std.time.ns_per_s);
+        try testing.expectEqual(@as(u32, 0), d.spray.pop.live);
+        try testing.expect(d.spray.last.died > 0);
+        try testing.expectEqual(@as(u32, 0), d.spray.last.deposits);
+    }
+
+    // A row with no size leaves nothing: a mark is as wide as the thing that
+    // left it, and nothing is not a width.
+    for (0..3) |i| b.spray.pop.userOf(@intCast(i))[0] = fixed.ONE;
+    try b.mount("deposit $soot row.u0\n");
+    for (0..3) |i| b.spray.pop.size[i] = 0;
+    try b.tick(8, 8 * std.time.ns_per_s);
+    try testing.expectEqual(@as(u32, 0), b.spray.last.deposits);
+}
+
+
+
+
+test "deposit: mount refuses a second one, and a host that takes no marks refuses by name" {
+    // A row leaves ONE mark a tick — the spray keeps one slot per row, so a
+    // second `deposit` would silently overwrite the first for every row.
+    // And `Fields.depositFn` is OPTIONAL: a host that has built nowhere for
+    // marks to go says so by leaving it null, which is the same shape the
+    // appearance manifold and `World` already have.
+    //
+    // Mutation: the second-`deposit` mount check dropped — the kernel mounts
+    //   and one of the two channels is silently never written.
+    // Mutation: `deposit` falling back to a no-op when `depositFn` is null —
+    //   the rows run, the store stays empty, and nothing is said.
+    const gpa = testing.allocator;
+    {
+        const b = try FieldBench.init(gpa, 8, 1);
+        defer b.deinit(gpa);
+        try b.fields.declare(.{ .name = "$soot", .default_decay_ns = 0 });
+        try b.fields.declare(.{ .name = "$ash", .default_decay_ns = 0 });
+        var diag = rill.registry.Detail{};
+        try testing.expectError(error.Mount, b.spray.mountKernel(&b.reg, "k", "deposit $soot 1\ndeposit $ash 1\n", &diag));
+        try testing.expect(std.mem.indexOf(u8, diag.text(), "a row leaves one mark a tick") != null);
+    }
+    {
+        // A store with no deposit door: the kernel mounts (the channel is
+        // real) and every row is refused, counted, at the flush.
+        const b = try FieldBench.init(gpa, 8, 1);
+        defer b.deinit(gpa);
+        try b.fields.declare(.{ .name = "$soot", .default_decay_ns = 0 });
+        var f = b.fields.asFields();
+        f.depositFn = null; // a host that takes no marks
+        b.spray.fields = f;
+        b.spray.knobs = .{ .rate = fixed.fromInt(2), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+        try b.mount("row.seed | mul 0 | add 0.25 | write row.size\ndeposit $soot 1\n");
+        try b.tick(0, 0);
+        try b.tick(1, std.time.ns_per_s);
+        try testing.expectEqual(@as(u32, 0), b.spray.last.deposits);
+        try testing.expectEqual(@as(u32, 2), b.spray.last.deposits_refused);
+        try testing.expectEqual(@as(f32, 0), b.fields.sample("$soot", .{ 0, 0, 0 }, true, &.{}).?.value);
+    }
+}
+
+
+
+
 test "align: a row steers toward the MEAN velocity of its neighbours, and a row alone steers nowhere" {
     // The flocking trio completed. Separation was `push` and cohesion is the
     // same word with a negative gain (no sign guard, deliberately — the

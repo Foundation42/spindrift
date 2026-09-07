@@ -39,7 +39,9 @@ const rill = @import("rill");
 const struple = @import("struple");
 const fixed = @import("fixed.zig");
 
-pub const Error = error{ UnknownChannel, Refused } || std.mem.Allocator.Error;
+/// `NoDeposits` — the host takes no per-row marks (`Fields.depositFn` is
+/// null). A kernel that says `deposit` on such a host is refused by name.
+pub const Error = error{ UnknownChannel, Refused, NoDeposits } || std.mem.Allocator.Error;
 
 /// One live deposit as the host hands it for rasterisation: the amplitude
 /// is the CURRENT contribution (decay applied by the host), positions and
@@ -85,6 +87,16 @@ pub const Fields = struct {
     castFn: *const fn (ctx: *anyopaque, owner: []const u8, now_ns: u64, cast: Cast) Error!void,
     /// Drop every deposit `owner` holds, on every channel.
     withdrawFn: *const fn (ctx: *anyopaque, owner: []const u8) void,
+    /// ADD a deposit — one a ROW made, at the row's own position, which
+    /// decays and is never replaced. `cast` is the spray's one standing
+    /// aggregate; this is a mark left behind, and a tick may leave many.
+    ///
+    /// OPTIONAL, and null is the honest default: a host that has not built
+    /// somewhere for marks to go says so by leaving this alone, and a kernel
+    /// that deposits is refused by name rather than quietly writing nowhere.
+    /// The same shape `World` and the appearance manifold already have —
+    /// spindrift declares the seam and evaluates nothing.
+    depositFn: ?*const fn (ctx: *anyopaque, owner: []const u8, now_ns: u64, cast: Cast) Error!void = null,
 
     pub fn bag(self: Fields, channel: []const u8, now_ns: u64, gpa: std.mem.Allocator, out: *std.ArrayListUnmanaged(Deposit)) Error!?Bag {
         return self.bagFn(self.ctx, channel, now_ns, gpa, out);
@@ -94,6 +106,11 @@ pub const Fields = struct {
     }
     pub fn withdraw(self: Fields, owner: []const u8) void {
         self.withdrawFn(self.ctx, owner);
+    }
+    /// `error.NoDeposits` when the host takes none — said, never absorbed.
+    pub fn deposit(self: Fields, owner: []const u8, now_ns: u64, c: Cast) Error!void {
+        const f = self.depositFn orelse return error.NoDeposits;
+        return f(self.ctx, owner, now_ns, c);
     }
 };
 
@@ -291,7 +308,7 @@ pub const MockFields = struct {
     // -- as the spray's Fields ---------------------------------------------
 
     pub fn asFields(self: *MockFields) Fields {
-        return .{ .ctx = self, .bagFn = bagThunk, .castFn = castThunk, .withdrawFn = withdrawThunk };
+        return .{ .ctx = self, .bagFn = bagThunk, .castFn = castThunk, .withdrawFn = withdrawThunk, .depositFn = depositThunk };
     }
 
     fn bagThunk(ctx: *anyopaque, chan: []const u8, now_ns: u64, gpa: std.mem.Allocator, out: *std.ArrayListUnmanaged(Deposit)) Error!?Bag {
@@ -329,6 +346,19 @@ pub const MockFields = struct {
             return;
         }
         try self.store(owner, c.channel, c.pos, c.amplitude, c.radius, tau, c.to, true);
+    }
+
+    /// A row's mark: APPENDED, never replaced, and left to decay. The store
+    /// has carried the `aggregate` flag since the cast door was built; this
+    /// is the other value it was always for.
+    fn depositThunk(ctx: *anyopaque, owner: []const u8, now_ns: u64, c: Cast) Error!void {
+        const self: *MockFields = @ptrCast(@alignCast(ctx));
+        self.now_ns = now_ns;
+        const ch = self.channel(c.channel) orelse {
+            self.refused += 1;
+            return error.UnknownChannel;
+        };
+        try self.store(owner, c.channel, c.pos, c.amplitude, c.radius, c.decay_ns orelse ch.default_decay_ns, c.to, false);
     }
 
     fn withdrawThunk(ctx: *anyopaque, owner: []const u8) void {

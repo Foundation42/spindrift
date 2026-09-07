@@ -483,6 +483,32 @@ fn kAlign(ctx: *row.Ctx) row.Error!void {
     try ctx.write(.{ .field = population.F_VEL }, .add, .{ .vec3 = out });
 }
 
+/// `deposit $chan <amount>` — the row leaves a MARK on a field channel, at
+/// its own position, as wide as its own size. funideas §8: *"a particle
+/// shouldn't necessarily disappear without consequence… particles become the
+/// transport mechanism connecting simulations."*
+///
+/// The spray's `casts` is one standing aggregate the host REPLACES every
+/// tick — where the cloud is, how much of it there is. This is the other
+/// thing entirely: a mark that is added, decays on the channel's own clock,
+/// and is never replaced. Rain leaves wetness; the wetness evaporates;
+/// nobody wrote a "make this wall look wet" system.
+///
+/// The row only ASKS here. The mark is handed to the host serially in the
+/// cast phase (`Spray.flushDeposits`), in row id order, because this runs in
+/// the parallel sweep and a store is a store. A row leaves one mark a tick,
+/// which is why the spray keeps one slot per row and mount refuses a second
+/// `deposit`.
+fn kDeposit(ctx: *row.Ctx) row.Error!void {
+    const s = try sprayOf(ctx);
+    const amount = try ctx.scalar(0);
+    // Zero is not a mark. Negative is: a field sums its deposits, so a row
+    // may take a thing away as readily as leave it — a raindrop landing on
+    // hot stone is a negative deposit of heat.
+    if (amount == 0) return;
+    s.dep_amp[ctx.row_index] = amount;
+}
+
 fn kSync(ctx: *row.Ctx) row.Error!void {
     const s = try sprayOf(ctx);
     const wr = ctx.write_ref orelse return ctx.refuse("{s}: needs the field to synchronise — `sync row.u0 <drift> <couple>`", .{ctx.op.name});
@@ -671,6 +697,16 @@ pub const WORDS = [_]rill.OpDef{
         .routes = .anywhere,
         .consumes = &.{"crowd"},
         .row = rowOnly(kInfect),
+        .eval = planeRefuse,
+    },
+    .{
+        .name = "deposit",
+        .statics = &.{.{ .name = "channel", .kind = .channel }},
+        .inputs = &.{.{ .name = "amount", .ty = Tag.number }},
+        .help = "Row word: leave a MARK on a field channel at this row's position, as wide as this row's size — `deposit $soot 0.4`. Added and left to decay, never replaced, which is what makes it different from the spray's `casts` aggregate. Handed to the host serially after the sweep, in row id order. A row leaves one mark a tick and mount refuses a second `deposit`; a host with nowhere to put marks refuses by name.",
+        .class = .reads,
+        .routes = .anywhere,
+        .row = rowOnly(kDeposit),
         .eval = planeRefuse,
     },
     .{

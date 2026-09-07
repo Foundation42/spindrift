@@ -1885,3 +1885,60 @@ pinned to rate zero — so the scene runs, says nothing, and shows nothing. It
 happened for `infect` and again for `align`. The engine says nothing on a
 mount failure; the symptom is `0 live rows` and no other word. RECORDED,
 trigger: the next time it costs more than a rebuild.
+
+## `deposit` — the sixteenth word, and §8 — 2026-09-08
+
+funideas §8, which the doc itself calls out as the big one: *"a particle
+shouldn't necessarily disappear without consequence… particles become the
+transport mechanism connecting simulations."*
+
+**The spray already cast, and a cast is the wrong shape for this.** `casts`
+is ONE standing aggregate the host replaces every tick — where the cloud is,
+how much of it there is. A mark is the opposite on every axis: many per tick,
+at the rows' own positions, added rather than replaced, and it outlives the
+row that made it. The mock store had carried an `aggregate: bool` on every
+stored deposit since the cast door was built, so the model had been waiting
+for this; `deposit` is the other value it was always for.
+
+**`Fields.depositFn` is OPTIONAL and that is the design.** A host that has
+built nowhere for marks to go leaves it null and a kernel that deposits is
+refused BY NAME, counted in `Stats.deposits_refused`. Same shape as `World`,
+`Fields` and the appearance manifold: spindrift declares the seam and
+evaluates nothing, matryoshka keeps compiling untouched, and nothing writes
+into a hole. `error.NoDeposits`.
+
+**One slot per row, flushed serially in the cast phase.** The sweep is
+parallel and a store is a store, so the row only ASKS — `dep_amp[row]` — and
+`flushDeposits` walks the slots in row id order during the cast phase and
+hands them over. Row id order is what makes the marks land the same way on
+every machine. One slot per row means a row leaves ONE mark a tick, and mount
+refuses a second `deposit` rather than letting the second silently overwrite
+the first for every row.
+
+The radius is the row's own `size`, which is the only honest answer — a mark
+is as wide as the thing that left it — and a row with no size leaves nothing.
+A negative amount is a mark too: a field sums its deposits, so a raindrop on
+hot stone deposits negative heat.
+
+**Seen working.** `kernels/soot.rill` is `collide | stick` and
+`row.stuck | mul k | deposit $soot` — the amount IS the condition, so an
+airborne row asks for nothing. After 300 ticks the ear reads **4.59** under
+the fire, **0.56** a metre out, **0.00** at three metres and 0.00 four metres
+up. A stain, where the embers actually landed, outliving them.
+
+**Gates two, mutations six, all bitten — and three of them only after the
+gate was rewritten.** The first cut asserted in a comment that it ran a cast
+and a deposit on one store and never did, so "a mark stored with the
+AGGREGATE flag" walked straight through; the count could not catch it either,
+because `castThunk` replaces IN PLACE and the length is the same both ways.
+What catches it is counting what the entries ARE: twelve marks and one
+aggregate. "The slot never cleared" needed a kernel that STOPS asking while
+still mounted (`deposit $soot row.u0` with the channel zeroed), because
+re-mounting a kernel without `deposit` clears `dep_channel` and the flush
+never reads a slot at all. And the dead-row check needed a row actually
+reaped on a depositing tick — life is converted to TICKS at spawn, so the
+scene runs on until the reap happens rather than assuming the next tick.
+
+Three gate-holes in one word, each found by a mutation surviving. That is the
+third time today, and it keeps being the same shape: the gate asserts the
+thing that is easy to assert rather than the thing that is claimed.

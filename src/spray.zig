@@ -173,6 +173,11 @@ pub const Stats = struct {
     /// the thing this replaced was a constant nobody could see either.
     neigh_cell: Fixed = 0,
     neigh_cells: u32 = 0,
+    /// Marks the rows left this tick (`deposit`), and the ones the host
+    /// would not take — an undeclared channel, or a host with nowhere to
+    /// put them. Said rather than absorbed, as the cast refusals are.
+    deposits: u32 = 0,
+    deposits_refused: u32 = 0,
 };
 
 /// The LARGEST a chunk gets, and what a spray sweeping serially uses. ≈ 80
@@ -448,6 +453,16 @@ pub const Spray = struct {
     /// order at all.
     neigh_user: []Fixed = &.{},
     neigh_bufs: []u32 = &.{},
+    /// What each row asked to leave behind this tick, by row id — zero is
+    /// "nothing". One slot per row rather than a queue: a row deposits at
+    /// most once a tick (mount refuses a second `deposit`), so the slot IS
+    /// the answer, the parallel sweep writes only its own rows' slots, and
+    /// the serial flush walks them in id order, which is what makes the
+    /// deposits land in the same order on every machine.
+    dep_amp: []Fixed = &.{},
+    /// The channel the mounted kernel's one `deposit` names. Empty = the
+    /// kernel does not deposit and none of this runs.
+    dep_channel: []const u8 = "",
     /// What this spray's rows mean by their coordinate channels, said on
     /// the plane for a host to read. Null until a host sets it.
     appearance: ?Appearance = null,
@@ -506,6 +521,9 @@ pub const Spray = struct {
         errdefer gpa.free(sp.neigh_pos);
         sp.neigh_vel = try gpa.alloc([3]Fixed, capacity);
         errdefer gpa.free(sp.neigh_vel);
+        sp.dep_amp = try gpa.alloc(Fixed, capacity);
+        errdefer gpa.free(sp.dep_amp);
+        @memset(sp.dep_amp, 0);
         sp.neigh_user = try gpa.alloc(Fixed, @as(usize, capacity) * population.USER_CHANNELS);
         return sp;
     }
@@ -741,6 +759,7 @@ pub const Spray = struct {
         self.gpa.free(self.grid_items);
         self.gpa.free(self.neigh_pos);
         self.gpa.free(self.neigh_vel);
+        self.gpa.free(self.dep_amp);
         self.gpa.free(self.neigh_user);
         self.gpa.free(self.neigh_bufs);
         self.pop.deinit();
@@ -832,8 +851,25 @@ pub const Spray = struct {
             }
         }
         self.wants_neighbours = false;
+        self.dep_channel = "";
         for (prog.nodes.items) |*n| {
-            if (std.mem.eql(u8, reg.get(n.op).name, "near")) self.wants_neighbours = true;
+            const nm = reg.get(n.op).name;
+            if (std.mem.eql(u8, nm, "near")) self.wants_neighbours = true;
+            if (!std.mem.eql(u8, nm, "deposit")) continue;
+            // A row leaves ONE mark a tick, so the spray keeps one slot per
+            // row and one channel — which means a second `deposit` would
+            // silently overwrite the first for every row. Refused here
+            // rather than ruled in a comment.
+            if (self.dep_channel.len != 0) {
+                diag.set("{s}: a second `deposit` — a row leaves one mark a tick, and this would overwrite the one to {s}; pick a channel and deposit to it once", .{ n.name, self.dep_channel });
+                return error.Mount;
+            }
+            const chan = n.statics[0].channel;
+            if (self.fields == null) {
+                diag.set("{s}: 'deposit {s} …' — this spray has no field store to deposit into; the host mounted it without fields", .{ n.name, chan });
+                return error.Mount;
+            }
+            self.dep_channel = chan;
         }
 
         // `mount` borrows a pointer to the program; the Kernel owns both, so
@@ -878,6 +914,40 @@ pub const Spray = struct {
     /// `tick`; one entry per chunk of `chunk` rows.
     pub fn dirtyChunks(self: *const Spray) []const bool {
         return self.chunk_dirty;
+    }
+
+    /// The rows' own marks, handed to the host in ROW ID ORDER — serial, in
+    /// the cast phase, because the sweep that filled these slots is parallel
+    /// and a store is a store. Same phase as the aggregate cast and for the
+    /// same reason: both are the spray writing to fields, and neither may
+    /// happen while rows are still moving.
+    ///
+    /// The radius is the row's own `size`, which is the only honest answer —
+    /// a mark is as wide as the thing that left it — and a row with no size
+    /// leaves nothing. Every slot is cleared on the way past, so a row that
+    /// stops depositing stops depositing.
+    fn flushDeposits(self: *Spray, stats: *Stats) void {
+        if (self.dep_channel.len == 0) return;
+        const host = self.fields orelse return;
+        var id: u32 = 0;
+        while (id < self.pop.capacity) : (id += 1) {
+            const amp = self.dep_amp[id];
+            if (amp == 0) continue;
+            self.dep_amp[id] = 0;
+            if (!self.pop.alive[id]) continue;
+            const r = self.pop.size[id];
+            if (r <= 0) continue;
+            host.deposit(self.name, self.now.time_ns, .{
+                .channel = self.dep_channel,
+                .pos = .{ fixed.toF32(self.pop.pos[0][id]), fixed.toF32(self.pop.pos[1][id]), fixed.toF32(self.pop.pos[2][id]) },
+                .amplitude = fixed.toF32(amp),
+                .radius = fixed.toF32(r),
+            }) catch {
+                stats.deposits_refused += 1;
+                continue;
+            };
+            stats.deposits += 1;
+        }
     }
 
     /// The lattice for a sampled channel, for `hear`. Null = not sampled.
@@ -1272,6 +1342,7 @@ pub const Spray = struct {
     /// live rows, no cast — the previous one decays on its own; unmount
     /// withdraws it.
     fn castPhase(self: *Spray, stats: *Stats) void {
+        self.flushDeposits(stats);
         if (self.casts.len == 0 or self.pop.live == 0) return;
         const host = self.fields orelse {
             stats.cast_refusals += @intCast(self.casts.len);
