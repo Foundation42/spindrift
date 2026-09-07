@@ -1402,3 +1402,43 @@ starts refusing); the `.k.` room not recognised.
 **Not run:** matryoshka's suite. Its half of this is three string sites
 with no matching plane path anywhere in the repo, and a heavy run is
 Christian's call, not a reflex — said here rather than implied.
+
+
+**The slate's customer, 2026-09-07 (`kernels/hearth.rill`; rill `9c97bbe`
+is the mechanism).** The gap `slide` left the same afternoon: a sliding row
+is against the cold thing on every tick and `row.stuck` is 0 the whole time,
+so "I am touching something right now" had nowhere in the row to live. A
+field written by `slide` would arrive a tick late and, crossing the tick
+boundary, would be state owing a dump and a format version. `slate.contact`
+crosses nothing. `slide` says it; the lines below read it.
+
+`stick` says it too, and the two facts are not the same one: `row.stuck` is
+the STATE that follows a landing, `slate.contact` is the EVENT. A stuck row
+stops colliding, so `stick` never runs twice for one landing — a kernel
+wanting the moment (a burst on impact) can have it, and one wanting the
+condition still reads the field.
+
+`hearth.rill` is fire.rill's manifold on a tilted surface: `collide | slide`,
+and every quench line gated on `slate.contact` instead of `row.stuck`.
+
+**Gates two.** "a row running down a slope quenches, and `row.stuck` never
+once says so" — the slope against `Nowhere`, one kernel, one seed, one
+schedule, asserting `!ever_stuck` beside cooled > 0.90 and sooted > 0.85
+against a falling row's 0.50 and 0.40. "`stick` says contact on the landing
+tick and on no other" — u3 is 0 before, 1 on the tick it lands, and 0 again
+after, with the channel cleared between so "quiet" is visible as itself.
+**Mutations three, all bitten:** the plunge line ungated; `slide` never
+saying contact; `stick` never saying contact.
+
+**Two mutations of mine were wrong before they were right**, and both are
+worth the ink. One deleted the FIRST `ctx.publish` in the file, which is
+`stick`'s, and ran it against a gate that only exercises `slide` — a
+survivor that was a bad pairing, not a weak gate. The other claimed the
+slate leaks between rows; it does not, because the seed overwrites the slot
+either way, and chasing why it would not reproduce is what found rill's
+uninitialised `sub_slate`. The line's real job is refusing a HOST-fed slate
+value, and it is gated as that now, in rill.
+
+**Found while gating:** `stick`'s publish had no gate at all when first
+written — a line nobody checks. It has one now rather than being dropped,
+because the landing-tick fact is one a kernel will want.

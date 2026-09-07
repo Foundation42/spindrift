@@ -1,0 +1,39 @@
+// hearth — the slope's ember. It lands on something tilted and RUNS DOWN
+// it, quenching the whole way; `fire.rill`'s ember lands on something flat
+// and stops. Same three manifold axes, same relax shape, one difference:
+// what tells the kernel it is against the cold thing.
+//
+// A sliding row NEVER sets `row.stuck` — that is what `stuck` means, and a
+// running ember is not held. So the condition "I am against a surface right
+// now" has nowhere in the row to live: `slide` could write a field, but
+// rill lands a row's writes only after the whole node loop, so the lines
+// below would read it a tick late, and a value that crosses a tick boundary
+// is state owing a dump and a format version. `slate.contact` crosses
+// nothing. `slide` says it; these lines read it; the next row starts blank.
+
+spawn
+gravity plane.drift.@self.k.gravity
+collide | slide
+perish
+
+// -- cooled ------------------------------------------------------------
+// It cools on its own,
+row.u0 | relax 1 plane.drift.@self.k.cool | write row.u0 add
+// and far faster wherever it is actually touching the cold thing.
+row.u0 | relax 1 plane.drift.@self.k.plunge | mul slate.contact | write row.u0 add
+
+// -- sooted ------------------------------------------------------------
+// Carbon as it burns,
+row.u1 | relax 1 plane.drift.@self.k.smoke | write row.u1 add
+// and a dump of it wherever it is being quenched — which, running down a
+// hearth, is the whole length of the streak rather than one mark.
+row.u1 | relax 1 plane.drift.@self.k.quench | mul slate.contact | write row.u1 add
+
+// -- thinned -----------------------------------------------------------
+// It spreads while it is in the air,
+row.u2 | relax 1 plane.drift.@self.k.thin | write row.u2 add
+// and is pulled back toward dense while it is against the surface.
+row.u2 | relax 0 plane.drift.@self.k.settle | mul slate.contact | write row.u2 add
+
+// The row's size is state, as it is in fire.rill.
+row.u2 | mul plane.drift.@self.k.puff | add plane.drift.@self.k.grain | write row.size

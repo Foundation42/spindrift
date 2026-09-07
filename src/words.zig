@@ -207,6 +207,12 @@ fn kStick(ctx: *row.Ctx) row.Error!void {
     // it here too; the mutation that deleted this line survived every gate,
     // so one rule in two places became one rule (beat 4).
     try ctx.write(.{ .field = population.F_STUCK }, .replace, .{ .scalar = fixed.ONE });
+    // The landing tick, said on the slate. `row.stuck` is the STATE that
+    // follows; this is the EVENT, and a kernel that wants the moment rather
+    // than the condition cannot get it from the field — `stuck` is already 1
+    // on every tick after, and a stuck row stops colliding, so `stick` never
+    // runs twice for one landing.
+    ctx.publish(0, .{ .scalar = fixed.ONE });
 }
 
 /// `slide` — take the contact's normal OUT of the row's velocity, and put
@@ -264,6 +270,12 @@ fn kSlide(ctx: *row.Ctx) row.Error!void {
     try ctx.write(.{ .field = population.F_POS }, .replace, .{ .vec3 = at });
     try ctx.write(.{ .field = population.F_NORMAL }, .replace, .{ .vec3 = n });
     try ctx.write(.{ .field = population.F_VEL }, .add, .{ .vec3 = back });
+    // And say so on the slate, for the lines below. A sliding row is against
+    // the cold thing every tick and `row.stuck` is 0 the whole time, so
+    // nothing in the row can carry this: a field written here is invisible
+    // until the next tick (rill's writes land after the node loop) and would
+    // then be state owing a dump. `slate.contact` is this tick's, this row's.
+    ctx.publish(0, .{ .scalar = fixed.ONE });
 }
 
 /// The tracer words — a host with a `World` registers these beside the
@@ -297,6 +309,7 @@ pub const TRACER = [_]rill.OpDef{
     },
     .{
         .name = "slide",
+        .publishes = &.{"contact"},
         .inputs = &.{ .{ .name = "at", .ty = Tag.any }, .{ .name = "normal", .ty = Tag.any } },
         .help = "Row word: take the contact's normal out of the row's velocity and put the row on the surface — vel -= (n * vel) n, pos <- at. What is left is the tangent, so the row runs along what it hit. Subtracts rather than replaces, so gravity and the wind still compose. `collide | slide | stick`.",
         .class = .reads,
@@ -306,6 +319,7 @@ pub const TRACER = [_]rill.OpDef{
     },
     .{
         .name = "stick",
+        .publishes = &.{"contact"},
         .inputs = &.{ .{ .name = "at", .ty = Tag.any }, .{ .name = "normal", .ty = Tag.any } },
         .help = "Row word: land the row — position the contact point `at`, row.normal the contact normal, row.stuck set; the sweep holds it. The appearance draws a stuck row at pos + normal × size. A stuck row still ages and reads its curves. `collide | stick` (the normal rides the pipe by name).",
         .class = .reads,

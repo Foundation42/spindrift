@@ -643,6 +643,7 @@ test "negative control: P1 has no collision — the floor and no world at all ag
 
 const smoke = @embedFile("smoke.rill");
 const fire = @embedFile("fire.rill");
+const hearth = @embedFile("hearth.rill");
 
 const FieldBench = struct {
     reg: rill.Registry,
@@ -1168,6 +1169,123 @@ test "relax: a rate that walks away from the target, or that closes more than th
     try b.tick(0, 0);
     try b.tick(1, std.time.ns_per_s / 64);
     try testing.expectEqual(@as(u32, 0), b.spray.last.refusals);
+}
+
+
+
+test "slate: `stick` says contact on the landing tick and on no other — the EVENT, where row.stuck is the state" {
+    // Why both words say it, and why the two are not the same fact. A landed
+    // row has `row.stuck` set for ever after; it made CONTACT once. A kernel
+    // that wants the moment — a soot burst on impact, a sound, a spark —
+    // cannot get it from the field, and a stuck row stops colliding, so
+    // `stick` never runs a second time for one landing.
+    //
+    // Mutation: `stick`'s publish dropped — u3 stays 0 on the landing tick.
+    // Mutation: the slate not blanked per row — u3 stays 1 for ever after,
+    // which is `row.stuck` wearing the slate's name and says nothing new.
+    const gpa = testing.allocator;
+    var reg = try tracerRegistry(gpa);
+    defer reg.deinit();
+    var mock = rill.MockPlane.init(gpa);
+    defer mock.deinit();
+    var floor = spindrift.Floor{};
+    var spray = try Spray.init(gpa, 4, 1, floor.asWorld());
+    defer spray.deinit();
+    spray.pos = .{ 0, fixed.fromInt(3), 0 };
+    spray.aim = .{ 0, -fixed.ONE, 0 };
+    spray.knobs = .{ .rate = fixed.fromInt(1), .speed = fixed.fromInt(2), .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+    var diag = rill.registry.Detail{};
+    try spray.mountKernel(&reg, "k",
+        \\spawn
+        \\collide | stick
+        \\slate.contact | write row.u3
+    , &diag);
+    try spray.tick(.{ .frame = 0, .time_ns = 0 }, null, mock.asPlane());
+    try spray.tick(.{ .frame = 1, .time_ns = std.time.ns_per_s }, null, mock.asPlane()); // born at 3, moves to 1
+    spray.knobs.rate = 0;
+    try testing.expectEqual(@as(Fixed, 0), spray.pop.userOf(0)[3]); // nothing touched yet
+    try spray.tick(.{ .frame = 2, .time_ns = 2 * std.time.ns_per_s }, null, mock.asPlane()); // lands
+    try testing.expectEqual(@as(u8, 1), spray.pop.stuck[0]);
+    try testing.expectEqual(fixed.ONE, spray.pop.userOf(0)[3]); // said, on the tick it happened
+    // And on every tick after: still stuck, never touching again. The write
+    // is quiet because nothing said anything, so u3 keeps what it had — the
+    // gate below clears it first so "quiet" is visible as itself.
+    spray.pop.userOf(0)[3] = 0;
+    try spray.tick(.{ .frame = 3, .time_ns = 3 * std.time.ns_per_s }, null, mock.asPlane());
+    try testing.expectEqual(@as(u8, 1), spray.pop.stuck[0]);
+    try testing.expectEqual(@as(Fixed, 0), spray.pop.userOf(0)[3]);
+    try testing.expectEqual(@as(u32, 0), spray.last.refusals);
+}
+
+test "hearth.rill: a row running down a slope quenches, and row.stuck never once says so" {
+    // The slate's customer scene. A sliding row is against the cold thing on
+    // every tick and `row.stuck` is 0 the whole time — so the condition the
+    // quench lines need exists nowhere in the row, and a field written by
+    // `slide` would arrive a tick late and cross a boundary it has no business
+    // crossing. `slate.contact` is this tick's and this row's.
+    //
+    // Same negative control as fire.rill's, one world apart: the SLOPE
+    // against Nowhere, one kernel, one seed, one schedule.
+    //
+    // Mutation: `mul slate.contact` dropped from the plunge line — the quench
+    // fires in mid-air too and the two worlds agree.
+    // Mutation: `slide`'s `ctx.publish` dropped — nothing ever says contact,
+    // the gated lines never fire, and the slope row cools like a falling one.
+    // Mutation: the slate not blanked per row — a row that never touched
+    // anything quenches on a neighbour's contact.
+    const gpa = testing.allocator;
+    var reg = try tracerRegistry(gpa);
+    defer reg.deinit();
+    const knobs = [_]struct { []const u8, f64 }{
+        .{ "gravity", -2.0 }, .{ "cool", 0.05 }, .{ "plunge", 2.00 },
+        .{ "smoke", 0.03 },   .{ "quench", 1.80 },
+        .{ "thin", 0.06 },    .{ "settle", 0.50 },
+        .{ "puff", 0.30 },    .{ "grain", 0.06 },
+    };
+    // A 3-4-5 slope, and no world at all.
+    var slope = spindrift.Plane{ .n = .{ -fixed.fromRatio(6, 10), fixed.fromRatio(8, 10), 0 }, .d = 0 };
+    var nowhere = spindrift.Nowhere{};
+    var u: [2][3]Fixed = undefined;
+    var ever_stuck = false;
+    for (0..2) |w| {
+        var mock = rill.MockPlane.init(gpa);
+        defer mock.deinit();
+        var buf: [64]u8 = undefined;
+        for (knobs) |k| try mock.putValue(try std.fmt.bufPrint(&buf, "plane.drift.@em.k.{s}", .{k[0]}), k[1]);
+        var spray = try Spray.init(gpa, 4, 1, if (w == 0) slope.asWorld() else nowhere.asWorld());
+        defer spray.deinit();
+        spray.pos = .{ 0, fixed.fromInt(2), 0 };
+        spray.knobs = .{ .rate = fixed.fromInt(4), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+        var diag = rill.registry.Detail{};
+        spray.mountKernel(&reg, "k", hearth, &diag) catch |err| {
+            std.debug.print("hearth.rill refused: {s}\n", .{diag.text()});
+            return err;
+        };
+        try spray.tick(.{ .frame = 0, .time_ns = 0 }, null, mock.asPlane());
+        var t: u64 = 1;
+        while (t <= 16) : (t += 1) {
+            try spray.tick(.{ .frame = t, .time_ns = t * std.time.ns_per_s / 4 }, null, mock.asPlane());
+            if (t == 1) {
+                try testing.expectEqual(@as(u32, 1), spray.pop.live);
+                spray.knobs.rate = 0;
+            }
+            if (spray.pop.stuck[0] != 0) ever_stuck = true;
+        }
+        try testing.expectEqual(@as(u32, 0), spray.last.refusals);
+        const ch = spray.pop.userOf(0);
+        u[w] = .{ ch[0], ch[1], ch[2] };
+    }
+    const ran = u[0];
+    const fell = u[1];
+
+    // The whole point: it quenched hard, and it was never once STUCK.
+    try testing.expect(!ever_stuck);
+    try testing.expect(ran[0] > fixed.fromRatio(90, 100)); // cooled, against the slope
+    try testing.expect(fell[0] < fixed.fromRatio(50, 100));
+    try testing.expect(ran[1] > fixed.fromRatio(85, 100)); // sooted, quenched the whole way
+    try testing.expect(fell[1] < fixed.fromRatio(40, 100));
+    // And held dense, where the falling one blew thin.
+    try testing.expect(ran[2] < fell[2]);
 }
 
 test "fire.rill: the appearance coordinate is the WORLD's, not the clock's — one kernel, one seed, one schedule, and only the floor differs" {

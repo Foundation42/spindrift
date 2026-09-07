@@ -30,6 +30,7 @@ pub fn build(b: *std.Build) void {
     mod.addAnonymousImport("embers.rill", .{ .root_source_file = b.path("kernels/embers.rill") });
     mod.addAnonymousImport("smoke.rill", .{ .root_source_file = b.path("kernels/smoke.rill") });
     mod.addAnonymousImport("fire.rill", .{ .root_source_file = b.path("kernels/fire.rill") });
+    mod.addAnonymousImport("hearth.rill", .{ .root_source_file = b.path("kernels/hearth.rill") });
 
     const lib = b.addLibrary(.{
         .linkage = .static,
