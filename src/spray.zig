@@ -97,6 +97,32 @@ pub const SPRAY_KNOBS = [_][]const u8{ "rate", "speed", "spread", "life" };
 /// the mock fills it for the gates. No dependency travels in either
 /// direction, and no float enters the sim: the coordinate is Q16.16 in the
 /// row and stays there until it leaves.
+///
+/// **The resting offset moved into the sim, 2026-09-08 — the renderer's
+/// rule is now a double count, and matryoshka must drop it.** Ruling 27b
+/// said a landed row is DRAWN at `pos + normal · size`: the sim held the
+/// row's centre at the contact point, on the surface, and the appearance
+/// lifted the disc off it, so one rule covered every row with no stuck
+/// branch and a shrinking row stayed tangent by construction. `collide` now
+/// sweeps the row as a SPHERE of `row.size` and answers where the CENTRE is
+/// when the body touches, so `stick` and `slide` already hold the row one
+/// radius off the surface. A renderer that still adds `normal · size` draws
+/// a landed row TWO radii up.
+///
+/// The rule belongs in the sim — one rule instead of two, and the sim is
+/// where the contact actually happens — so **matryoshka's appearance draws
+/// a stuck row at `pos`, flat, exactly as it draws a free one.** That is
+/// its beat and not this one; nothing here can gate it, and this comment is
+/// the contract it is gated against.
+///
+/// What 27b bought and this costs: a row that SHRINKS after landing kept
+/// its body on the surface, because the offset was recomputed from the
+/// live size every frame. It now keeps its landing CENTRE and lifts off.
+/// Recorded, not built, with a trigger — the first customer scene where a
+/// landed row shrinks enough to see it (fire.rill's embers shrink by 0.3
+/// cells, which is a tenth of a metre and under the pixel). The fill is a
+/// sim-side re-rest, `pos ← pos − normal · (size_then − size_now)`, and it
+/// is state that owes a dump, which is why it is not free and not guessed.
 pub const Appearance = struct {
     /// Which user channels carry the coordinate, in order.
     coord: [3]u8 = .{ 0, 1, 2 },

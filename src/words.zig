@@ -157,16 +157,51 @@ fn kRelax(ctx: *row.Ctx) row.Error!void {
 // deleted rather than kept beside it (a duplicate name refuses at register).
 
 /// `collide` — the row's move this tick, `pos → pos + vel · dt`, against
-/// the world. A hit emits the hit point (port 0), the normal (1), `t` (2)
-/// and the material (3); no hit emits nothing and the row's flow ends
-/// quietly there. A stuck row moves nothing and so hits nothing.
+/// the world, as a SPHERE of the row's own `size`. A hit emits the contact
+/// point (port 0), the normal (1), `t` (2) and the material (3); no hit
+/// emits nothing and the row's flow ends quietly there. A stuck row moves
+/// nothing and so hits nothing.
+///
+/// **A row IS a sphere of `row.size`** (ruled 2026-09-08), so the radius is
+/// authored nowhere: the field the appearance already draws with, and that
+/// `deposit` already marks with, is the one collision uses. Nothing else
+/// would be honest — a row with two widths would be two rows.
+///
+/// It was a zero-width POINT until then, and that was measured as a bug and
+/// not a simplification: in matryoshka's playground, particles walking a
+/// floor passed straight through a sphere and a box resting on it at
+/// 1.1–1.3× the density of a control annulus — no blocking at all — because
+/// the rows rest at y = 0 exactly and both props' cross-section AT y = 0 is
+/// a tangent point and a coplanar face. A point through the one height
+/// where a prop has no cross-section hits nothing, and no nudge to the
+/// props' heights fixes the class of that bug.
+///
+/// The point it emits is the sphere's CENTRE at contact, one radius off the
+/// surface along the normal, never the surface point — `stick` and `slide`
+/// both write `pos ← at`, and a centre placed ON the surface starts the
+/// next tick interpenetrating, which is the same bug wearing a hat. The
+/// normal is still the SURFACE's.
+///
+/// The size is read from the row's SNAPSHOT, like everything else in the
+/// sweep (ruling 20): a kernel that writes `row.size` this tick collides at
+/// the width it had when the kernel began, and shrinks into the next one.
+///
+/// A NEGATIVE `row.size` refuses by name. Nothing clamps it: a negative
+/// radius moves the surface the wrong way, so the row would tunnel further
+/// than a point would, and it would do it quietly while the picture looked
+/// almost right — campaign 2's ruling 3, at the seam.
 fn kCollide(ctx: *row.Ctx) row.Error!void {
     const s = try sprayOf(ctx);
     const p = &s.pop;
     const r = ctx.row_index;
+    const radius = p.size[r];
+    if (radius < 0) {
+        var nb: [24]u8 = undefined;
+        return ctx.refuse("{s}: row.size {s} is negative — a row IS a sphere of its size, and a negative radius is a surface that moves the wrong way", .{ ctx.op.name, fixed.format(radius, &nb) });
+    }
     const from: fixed.Vec = .{ p.pos[0][r], p.pos[1][r], p.pos[2][r] };
     const to: fixed.Vec = .{ from[0] +% fixed.mul(p.vel[0][r], ctx.dt), from[1] +% fixed.mul(p.vel[1][r], ctx.dt), from[2] +% fixed.mul(p.vel[2][r], ctx.dt) };
-    const hit = s.world.collide(from, to) orelse return;
+    const hit = s.world.collide(from, to, radius) orelse return;
     ctx.out[0] = .{ .vec3 = hit.at };
     ctx.out[1] = .{ .vec3 = hit.normal };
     ctx.out[2] = .{ .scalar = hit.t };
@@ -175,6 +210,24 @@ fn kCollide(ctx: *row.Ctx) row.Error!void {
 
 /// `ground` — the nearest surface below the row: signed distance (port 0)
 /// and its normal (1). A world with no ground says nothing.
+///
+/// **No radius, decided 2026-09-08 when `collide` got one.** `collide` had
+/// to take one because its answer is a POSITION the row adopts, and a
+/// position that ignores the radius is a position inside the wall. `ground`
+/// answers a distance and a normal; the row does not move to them, and
+/// nothing here places anything. Every number a `World` hands back is
+/// therefore about the row's CENTRE — one convention rather than two, where
+/// a `ground` that quietly subtracted the radius would answer clearance
+/// while `collide` answered centres and a kernel reading both would have to
+/// know which was which. The clearance under the BODY is already spellable
+/// at the row, exactly, with no word: `ground | sub row.size`. And it costs
+/// a host nothing — `groundFn` is unchanged, so matryoshka's compiles as it
+/// stands.
+///
+/// Recorded, with its trigger: the first word that PLACES a row from
+/// `ground`'s answer — a `settle` or a `hover` that rests a row on what is
+/// under it without a segment to sweep — is placement, not measurement, and
+/// wants the radius the way `collide` does. One customer, not a hunch.
 fn kGround(ctx: *row.Ctx) row.Error!void {
     const s = try sprayOf(ctx);
     const p = &s.pop;
@@ -184,7 +237,7 @@ fn kGround(ctx: *row.Ctx) row.Error!void {
     ctx.out[1] = .{ .vec3 = g.normal };
 }
 
-/// `stick` — land the row where it hit: position the hit point, velocity
+/// `stick` — land the row where it hit: position the contact point, velocity
 /// zero, `row.stuck` set. A stuck row still ages and still reads its
 /// curves. Read-aloud: `collide | stick` is the ember on the plate and the
 /// spark on the trim in one breath; `land` fit the plate and not the wall,
@@ -192,14 +245,27 @@ fn kGround(ctx: *row.Ctx) row.Error!void {
 fn kStick(ctx: *row.Ctx) row.Error!void {
     const at = try ctx.vec3(0);
     const normal = try ctx.vec3(1);
-    // The row's position is the CONTACT point, and the contact normal is
-    // stored on the row (ruling 27b): the resting offset — a disc or a
-    // light drawn at `pos + normal · size`, tangent to the surface — is the
-    // appearance's, one rule for every row with no stuck branch, so a
-    // landed row that shrinks stays on the surface by construction. The
-    // first draft offset `pos` here (ruling 24 as first ruled) and a
-    // shrinking ember kept its landing height. `hear` samples at the
-    // contact. The normal rides the pipe from `collide` by name.
+    // The row's position is the contact — and since 2026-09-08 the contact
+    // is the sphere's CENTRE there, one radius off the surface, because
+    // `collide` sweeps the row's `size` and answers where the centre is
+    // when the body touches. `stick` itself learned nothing: it writes the
+    // point it was handed, which is the test that rule 2 is in the right
+    // place. A row that shrinks after landing keeps its landing centre and
+    // its body lifts off the surface — see the trigger recorded on
+    // `spray.zig`'s `Appearance`; the appearance's own re-rest is
+    // matryoshka's beat.
+    //
+    // **Ruling 27b is now a double count and must move.** It says the
+    // resting offset is the APPEARANCE's — a disc or a light drawn at
+    // `pos + normal · size`, one rule for every row with no stuck branch.
+    // The sim now holds the row a radius off the surface itself, so a
+    // renderer that still adds `normal · size` draws a landed row TWO radii
+    // up. One rule, in the sim, is the answer; the renderer's line comes
+    // out in matryoshka's beat, not here.
+    //
+    // The first draft offset `pos` here (ruling 24 as first ruled) and a
+    // shrinking ember kept its landing height. `hear` samples at `pos`, the
+    // centre. The normal rides the pipe from `collide` by name.
     try ctx.write(.{ .field = population.F_POS }, .replace, .{ .vec3 = at });
     try ctx.write(.{ .field = population.F_NORMAL }, .replace, .{ .vec3 = normal });
     // No velocity write here: the sweep drops a stuck row's velocity every
@@ -220,6 +286,12 @@ fn kStick(ctx: *row.Ctx) row.Error!void {
 /// is the tangent, so the row runs along what it hit instead of stopping
 /// on it. `collide | slide | stick` is the whole life of an ember on a
 /// sloped hearth in one breath.
+///
+/// "On the surface" is the sphere's centre one radius off it since
+/// 2026-09-08, for the same reason `stick`'s is and by the same route: `at`
+/// comes from `collide`, and `slide` writes whatever it was handed. So a
+/// sliding row RIDES the surface at its own radius instead of dragging its
+/// centre along it, and the streak it leaves is where the body was.
 ///
 /// It SUBTRACTS rather than replacing, and that is the same choice `relax`
 /// made an hour earlier for the same reason: as an add it composes, so
@@ -559,7 +631,7 @@ pub const TRACER = [_]rill.OpDef{
             .{ .name = "t", .ty = Tag.number },
             .{ .name = "material", .ty = Tag.number },
         },
-        .help = "Row word (host): the row's move this tick against the world. On a hit, the hit point (piped on), then normal, t, material; no hit, nothing — `collide | stick`.",
+        .help = "Row word (host): the row's move this tick against the world, swept as a SPHERE of row.size. On a hit, the contact point (piped on) — the row's CENTRE at contact, one radius off the surface — then the surface normal, t, material; no hit, nothing. A row with size 0 is the old point test exactly. A negative row.size refuses by name. `collide | stick`.",
         .class = .reads,
         .routes = .anywhere,
         .row = rowOnly(kCollide),
@@ -591,7 +663,7 @@ pub const TRACER = [_]rill.OpDef{
         .name = "stick",
         .publishes = &.{"contact"},
         .inputs = &.{ .{ .name = "at", .ty = Tag.any }, .{ .name = "normal", .ty = Tag.any } },
-        .help = "Row word: land the row — position the contact point `at`, row.normal the contact normal, row.stuck set; the sweep holds it. The appearance draws a stuck row at pos + normal × size. A stuck row still ages and reads its curves. `collide | stick` (the normal rides the pipe by name).",
+        .help = "Row word: land the row — position the contact `at`, row.normal the contact normal, row.stuck set; the sweep holds it. `at` is the row's CENTRE at contact, one radius off the surface, because `collide` sweeps the row as a sphere of row.size — so the appearance draws a stuck row at `pos`, not at pos + normal × size. A stuck row still ages and reads its curves. `collide | stick` (the normal rides the pipe by name).",
         .class = .reads,
         .routes = .anywhere,
         .row = rowOnly(kStick),

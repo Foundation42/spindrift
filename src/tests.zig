@@ -995,7 +995,20 @@ test "slide: the contact's normal leaves the velocity — what is left is the ta
     // component doubles instead of leaving (vel.x −4, not 0).
     // Mutation: the whole velocity scaled instead of the normal part — the
     // tangent moves, and it is asserted here for exactly that reason.
-    // Mutation: `pos ← at` dropped — the row is through the wall at −2.
+    // Mutation: `pos ← at` dropped — the row ends the tick at 1.5, still
+    // falling toward the wall it should be resting against.
+    //
+    // MOVED 2026-09-08, examined and not re-baselined: a row is a sphere of
+    // `row.size` now, and a spawn gives every row size 1, so this row is a
+    // unit sphere and the wall stops its CENTRE a radius out. Re-deriving
+    // the scene found a survivor that had been there since beat 4: thrown
+    // from x = 2, the row reached the wall EXACTLY (t = 0, `at` equal to
+    // `from`), so `pos ← at` wrote the position the row already had and the
+    // mutation named above was a decoration. It is thrown from 3.5 now, so
+    // the contact is strictly inside the tick — t = 0.25, `at` a quarter of
+    // the move short of `from` — and dropping the write moves the row.
+    // "Ending exactly touching is not a crossing" was the old scene's other
+    // half and is gated where the geometry lives, in `world.zig`.
     const gpa = testing.allocator;
     var reg = try tracerRegistry(gpa);
     defer reg.deinit();
@@ -1004,8 +1017,8 @@ test "slide: the contact's normal leaves the velocity — what is left is the ta
     var wall = spindrift.Plane{ .n = .{ fixed.ONE, 0, 0 }, .d = 0 };
     var spray = try Spray.init(gpa, 4, 1, wall.asWorld());
     defer spray.deinit();
-    // Thrown at the wall from x = 2 and falling: (−2, −1, 0) cells/s.
-    spray.pos = .{ fixed.fromInt(2), fixed.fromInt(4), 0 };
+    // Thrown at the wall from x = 3.5 and falling: (−2, −1, 0) cells/s.
+    spray.pos = .{ fixed.fromRatio(35, 10), fixed.fromInt(4), 0 };
     spray.aim = .{ -fixed.ONE, -fixed.HALF, 0 };
     spray.knobs = .{ .rate = fixed.fromInt(1), .speed = fixed.fromInt(2), .spread = 0, .life_ns = 100 * std.time.ns_per_s };
     var diag = rill.registry.Detail{};
@@ -1013,16 +1026,20 @@ test "slide: the contact's normal leaves the velocity — what is left is the ta
     try spray.tick(.{ .frame = 0, .time_ns = 0 }, null, mock.asPlane());
     try spray.tick(.{ .frame = 1, .time_ns = std.time.ns_per_s }, null, mock.asPlane());
     spray.knobs.rate = 0;
-    // Born and launched; the move ends ON the plane, which is not a crossing.
-    try testing.expectEqual(@as(Fixed, 0), spray.pop.pos[0][0]);
+    const radius = spray.pop.size[0]; // the spawn's, 1 cell: the row IS a sphere of it
+    try testing.expectEqual(fixed.ONE, radius);
+    // Born and launched, and still clear of the wall — the sphere's surface
+    // is half a cell off it, so nothing has happened yet.
+    try testing.expectEqual(fixed.fromRatio(15, 10), spray.pop.pos[0][0]);
     try testing.expectEqual(-fixed.fromInt(2), spray.pop.vel[0][0]);
     try spray.tick(.{ .frame = 2, .time_ns = 2 * std.time.ns_per_s }, null, mock.asPlane());
     try testing.expectEqual(@as(u32, 0), spray.last.refusals);
     // The normal component is gone, EXACTLY, and the tangent is untouched.
     try testing.expectEqual(@as(Fixed, 0), spray.pop.vel[0][0]);
     try testing.expectEqual(-fixed.ONE, spray.pop.vel[1][0]);
-    // And the row is on the wall, not through it.
-    try testing.expectEqual(@as(Fixed, 0), spray.pop.pos[0][0]);
+    // And the row is on the wall, not through it — its CENTRE one radius
+    // out, so the body is against the wall and not half inside it.
+    try testing.expectEqual(radius, spray.pop.pos[0][0]);
     try testing.expectEqual(fixed.Vec{ fixed.ONE, 0, 0 }, fixed.Vec{ spray.pop.normal[0][0], spray.pop.normal[1][0], spray.pop.normal[2][0] });
 }
 
@@ -2357,9 +2374,18 @@ fn tracerRegistry(gpa: std.mem.Allocator) !rill.Registry {
     return reg;
 }
 
-test "collide | stick: a falling row lands on the floor — position the hit point, velocity zero, stuck set — and still ages and reads its curve" {
+test "collide | stick: a falling row lands on the floor — position the contact, velocity zero, stuck set — and still ages and reads its curve" {
     // Mutation: `stick` leaves the velocity; the row falls through next tick.
     // Mutation: `collide` tests last tick's segment; the row lands one tick late, below the floor.
+    //
+    // MOVED 2026-09-08, examined and not re-baselined: the row is a SPHERE
+    // of `row.size` now, so it lands with its centre one radius up rather
+    // than with its centre on the floor. The size at the landing tick is
+    // 0.5 — the curve's first knot, written at the end of the birth tick,
+    // and read from the row's snapshot when the kernel begins (ruling 20's
+    // rule, one word further along) — so the contact is y = 0.5 exactly.
+    // The claim did not move: the row stops where it touched, at rest,
+    // stuck, and it still ages and still reads its curve.
     const gpa = testing.allocator;
     var reg = try tracerRegistry(gpa);
     defer reg.deinit();
@@ -2384,26 +2410,273 @@ test "collide | stick: a falling row lands on the floor — position the hit poi
     spray.knobs.rate = 0;
     try testing.expectEqual(fixed.fromInt(1), spray.pop.pos[1][0]);
     try testing.expectEqual(@as(u8, 0), spray.pop.stuck[0]);
-    // Ruling 27b: the row's position is the CONTACT point, and the contact
-    // normal is stored on the row (zero until it lands); the resting offset
-    // — drawn at pos + normal · size — is the appearance's, gated in the
-    // engine. Mutation: `stick` stores no normal (up expected, zero found);
-    // `stick` offsets pos by the radius (y = 0.5, not 0).
+    // The row's position is the contact, and the contact normal is stored on
+    // the row (zero until it lands). The resting offset is the SIM's now,
+    // not the appearance's: ruling 27b's `pos + normal · size` in a renderer
+    // would draw this row two radii up (see `spray.zig`'s `Appearance`).
+    // Mutation: `stick` stores no normal (up expected, zero found).
     try testing.expectEqual(fixed.Vec{ 0, 0, 0 }, fixed.Vec{ spray.pop.normal[0][0], spray.pop.normal[1][0], spray.pop.normal[2][0] });
-    try spray.tick(.{ .frame = 2, .time_ns = 2 * std.time.ns_per_s }, null, mock.asPlane()); // 1 → −1 would cross: lands ON the floor
+    // The size the sweep will collide with: last tick's write, which is what
+    // the kernel reads from the snapshot when it begins.
+    const radius = spray.pop.size[0];
+    try testing.expectEqual(fixed.HALF, radius);
+    try spray.tick(.{ .frame = 2, .time_ns = 2 * std.time.ns_per_s }, null, mock.asPlane()); // 1 → −1 would cross: the SPHERE lands at y = r
     try testing.expectEqual(@as(u32, 0), spray.last.refusals);
-    try testing.expectEqual(@as(Fixed, 0), spray.pop.pos[1][0]);
+    try testing.expectEqual(radius, spray.pop.pos[1][0]);
     try testing.expectEqual(@as(Fixed, 0), spray.pop.vel[1][0]);
     try testing.expectEqual(@as(u8, 1), spray.pop.stuck[0]);
     try testing.expectEqual(fixed.Vec{ 0, fixed.ONE, 0 }, fixed.Vec{ spray.pop.normal[0][0], spray.pop.normal[1][0], spray.pop.normal[2][0] });
-    // Stuck: it stays ON the surface as it shrinks — no re-rest anywhere;
-    // the appearance keeps the shrinking disc tangent by construction.
+    // Stuck: the centre does not move again — no creep, no sink — while the
+    // size curve keeps shrinking underneath it. The body lifting off as it
+    // shrinks is the RECORDED cost of moving the resting offset into the sim
+    // (`spray.zig`'s `Appearance`), and it is asserted here so the day a
+    // re-rest is built this gate is what has to change.
+    // Mutation: `stick` adds the radius to `at` — the renderer's ruling 27b
+    // offset moved into the sim as WELL as being kept — the row rests at
+    // 2r = 1.0 and this equality fails on the landing tick.
     const size_at_landing = spray.pop.size[0];
     try spray.tick(.{ .frame = 3, .time_ns = 3 * std.time.ns_per_s }, null, mock.asPlane());
-    try testing.expectEqual(@as(Fixed, 0), spray.pop.pos[1][0]);
+    try testing.expectEqual(radius, spray.pop.pos[1][0]);
     try testing.expectEqual(3 * std.time.ns_per_s, spray.pop.age_ns[0]);
     try testing.expect(spray.pop.size[0] < size_at_landing);
     try testing.expectEqual(fixed.fromInt(1), spray.pop.asRowPlane().read(0, spindrift.population.F_STUCK).scalar);
+}
+
+// ---------------------------------------------------------------------------
+// The radius, 2026-09-08 — a row IS a sphere of `row.size`, and `collide`
+// sweeps it. Paid for by a measured bug: in matryoshka's playground,
+// particles walking a floor passed straight THROUGH a sphere and a box
+// resting on it (1.1–1.3× the density of a control annulus inside their
+// footprints — no blocking at all), because a row is a zero-width point at
+// y = 0 exactly and both props' cross-section at y = 0 is a tangent point
+// and a coplanar face.
+// ---------------------------------------------------------------------------
+
+test "collide sweeps the row's own `size`: a fat row lands high, a thin one low, and a row with size 0 lands where beat 4 said" {
+    // The seam's radius is authored NOWHERE: it is `row.size`, the field the
+    // appearance already draws with and `deposit` already marks with, so a
+    // scene that wants smaller collision writes a smaller row. Driven
+    // through the sentence — one kernel, one knob apart — because a gate
+    // that pokes `pop.size` is watching the operator, not the row.
+    //
+    // Mutation: `collide` passes 0 instead of `p.size[r]` — all three runs
+    // land at 0 and the two claims (a fat row lands high; a thin one low)
+    // both fail.
+    // Mutation: `collide` passes a constant radius — the runs agree with
+    // each other, which is the shape of the bug this fixes.
+    // Mutation: `Floor`'s crossing test keeps `self.y` — same as above, one
+    // layer down, and the r = 0 row still passes, which is why the sizes
+    // that differ are the gate and r = 0 is only the control.
+    const gpa = testing.allocator;
+    // Born at y = 5, falling 3 cells/s on one-second ticks: 5 → 2 on the
+    // birth tick (where the size is still the spawn's, and nothing is near
+    // the floor), then 2 → −1, which crosses for every radius under 2. No
+    // boundary coincidences: each run's contact is strictly inside its tick.
+    const cases = [_]struct { r: f64, at: Fixed, t: Fixed }{
+        .{ .r = 0.0, .at = 0, .t = fixed.fromRatio(2, 3) }, // the point test: beat 4's own answer
+        .{ .r = 0.25, .at = fixed.ONE / 4, .t = fixed.fromRatio(7, 12) },
+        .{ .r = 1.0, .at = fixed.ONE, .t = fixed.fromRatio(1, 3) },
+    };
+    for (cases) |c| {
+        var reg = try tracerRegistry(gpa);
+        defer reg.deinit();
+        var mock = rill.MockPlane.init(gpa);
+        defer mock.deinit();
+        try mock.putValue("plane.drift.@em.k.radius", c.r);
+        var floor = spindrift.Floor{};
+        var spray = try Spray.init(gpa, 4, 1, floor.asWorld());
+        defer spray.deinit();
+        spray.pos = .{ 0, fixed.fromInt(5), 0 };
+        spray.aim = .{ 0, -fixed.ONE, 0 };
+        spray.knobs = .{ .rate = fixed.fromInt(1), .speed = fixed.fromInt(3), .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+        var diag = rill.registry.Detail{};
+        spray.mountKernel(&reg, "k",
+            \\spawn
+            \\plane.drift.@self.k.radius | write row.size
+            \\collide | stick
+            \\collide as at, n, t, m
+            \\t | write row.u0
+        , &diag) catch |err| {
+            std.debug.print("kernel refused: {s}\n", .{diag.text()});
+            return err;
+        };
+        try spray.tick(.{ .frame = 0, .time_ns = 0 }, null, mock.asPlane());
+        try spray.tick(.{ .frame = 1, .time_ns = std.time.ns_per_s }, null, mock.asPlane()); // born, 5 → 2
+        spray.knobs.rate = 0;
+        try testing.expectEqual(fixed.fromInt(2), spray.pop.pos[1][0]);
+        try spray.tick(.{ .frame = 2, .time_ns = 2 * std.time.ns_per_s }, null, mock.asPlane()); // 2 → −1 crosses
+        try testing.expectEqual(@as(u32, 0), spray.last.refusals);
+        try testing.expectEqual(@as(u8, 1), spray.pop.stuck[0]);
+        // The centre rests one radius off the surface — the row's own size,
+        // read back from the row rather than from the case, so a size the
+        // knob failed to land could not pass this by agreeing with itself.
+        try testing.expectEqual(c.at, spray.pop.size[0]);
+        try testing.expectEqual(spray.pop.size[0], spray.pop.pos[1][0]);
+        // And `t` moved with the radius too: rule 1 says a zero radius
+        // answers the OLD t, and 2/3 is what the point test has always said
+        // for this segment.
+        try testing.expectEqual(c.t, spray.pop.userOf(0)[0]);
+        // It STAYS one radius off — no creep, no sink — for as long as you
+        // care to watch, with `collide` asked again on every one of those
+        // ticks. A resting sphere is exactly touching, and touching is not
+        // a crossing, so the answer is silence rather than a re-landing.
+        // Mutation: a stuck row keeps its velocity (the sweep's hold
+        // dropped) — it sinks a cell a tick from here.
+        // Mutation: the mock's "ends touching does not collide" flipped to
+        // `>` — and it does not merely re-land the row, it CRASHES here, on
+        // a zero denominator: a resting row's segment is `from == to`, and
+        // the touching convention is the only thing standing between that
+        // and `fromRatio(0, 0)`. Ten ticks of rest is what runs it.
+        var held: u64 = 3;
+        while (held <= 12) : (held += 1) {
+            try spray.tick(.{ .frame = held, .time_ns = held * std.time.ns_per_s }, null, mock.asPlane());
+            try testing.expectEqual(c.at, spray.pop.pos[1][0]);
+            try testing.expectEqual(@as(Fixed, 0), spray.pop.pos[0][0]);
+        }
+        try testing.expectEqual(@as(u32, 0), spray.last.refusals);
+    }
+}
+
+test "collide: a row whose CENTRE misses the floor but whose BODY does not now lands — the roaches bug, driven through a kernel" {
+    // The bug, in the smallest scene that has it. One kernel, one seed, one
+    // schedule, and only the row's SIZE differs: the sphere is stopped by a
+    // surface the point sails over. The mock has no box, so the miniature is
+    // the same geometry against a plane — a centre that stays above the
+    // floor for the whole tick while the body crosses it — which is exactly
+    // what a roach walking past a prop's footprint does.
+    //
+    // Mutation: `collide` passes 0 for the radius — the fat run behaves like
+    // the thin one, sails over, and the gate's whole claim inverts. That is
+    // the shipped bug, reproduced.
+    // Mutation: `Floor` tests `to[1] >= self.y` instead of the raised
+    // surface — same thing at the mock.
+    const gpa = testing.allocator;
+    var landed: [2]bool = undefined;
+    var height: [2]Fixed = undefined;
+    var across: [2]Fixed = undefined;
+    for ([2]f64{ 1.0, 0.0 }, 0..) |radius, i| {
+        var reg = try tracerRegistry(gpa);
+        defer reg.deinit();
+        var mock = rill.MockPlane.init(gpa);
+        defer mock.deinit();
+        try mock.putValue("plane.drift.@em.k.radius", radius);
+        var floor = spindrift.Floor{};
+        var spray = try Spray.init(gpa, 4, 1, floor.asWorld());
+        defer spray.deinit();
+        // Running along at 2 cells/s and sinking at 1: on the fourth tick
+        // the centre goes 1.5 → 0.5, never reaching the floor.
+        spray.pos = .{ 0, fixed.fromRatio(45, 10), 0 };
+        spray.aim = .{ fixed.fromInt(2), -fixed.ONE, 0 };
+        spray.knobs = .{ .rate = fixed.fromInt(1), .speed = fixed.ONE, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+        var diag = rill.registry.Detail{};
+        spray.mountKernel(&reg, "k",
+            \\spawn
+            \\plane.drift.@self.k.radius | write row.size
+            \\collide | stick
+        , &diag) catch |err| {
+            std.debug.print("kernel refused: {s}\n", .{diag.text()});
+            return err;
+        };
+        var t: u64 = 0;
+        while (t <= 4) : (t += 1) {
+            try spray.tick(.{ .frame = t, .time_ns = t * std.time.ns_per_s }, null, mock.asPlane());
+            if (t == 1) spray.knobs.rate = 0;
+        }
+        try testing.expectEqual(@as(u32, 0), spray.last.refusals);
+        landed[i] = spray.pop.stuck[0] != 0;
+        height[i] = spray.pop.pos[1][0];
+        across[i] = spray.pop.pos[0][0];
+    }
+    // The sphere is stopped half way along the tick its body touched, and it
+    // rests one radius up.
+    try testing.expect(landed[0]);
+    try testing.expectEqual(fixed.ONE, height[0]);
+    try testing.expectEqual(fixed.fromInt(7), across[0]);
+    // The point walks on, still in the air, ABOVE the surface it should have
+    // touched and past the far side of it. This is the measured bug: no
+    // blocking at all, and every number still in range.
+    try testing.expect(!landed[1]);
+    try testing.expectEqual(fixed.HALF, height[1]);
+    try testing.expect(height[1] > 0);
+    try testing.expectEqual(fixed.fromInt(8), across[1]);
+}
+
+test "collide: a negative row.size refuses by name — the surface does not get to move the wrong way quietly" {
+    // `row.size` is a kernel-written field with no bounds, and a negative
+    // one is a radius that pushes the surface AWAY: the row would tunnel
+    // further than a point does, and it would do it with the picture nearly
+    // right. Campaign 2's ruling 3 at the seam — refuse, do not clamp.
+    //
+    // Mutation: the guard replaced by `@max(0, size)` — nothing refuses, the
+    // row lands on the floor as if it were a point, and the kernel's bad
+    // number is never mentioned to anybody.
+    // Mutation: the guard dropped entirely — the row sinks to −0.5 and stays
+    // there, stuck below the floor.
+    const gpa = testing.allocator;
+    var reg = try tracerRegistry(gpa);
+    defer reg.deinit();
+    var mock = rill.MockPlane.init(gpa);
+    defer mock.deinit();
+    var floor = spindrift.Floor{};
+    var spray = try Spray.init(gpa, 4, 1, floor.asWorld());
+    defer spray.deinit();
+    spray.pos = .{ 0, fixed.fromInt(5), 0 };
+    spray.aim = .{ 0, -fixed.ONE, 0 };
+    spray.knobs = .{ .rate = fixed.fromInt(1), .speed = fixed.fromInt(3), .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+    var diag = rill.registry.Detail{};
+    try spray.mountKernel(&reg, "k",
+        \\spawn
+        \\row.seed | mul 0 | sub 0.5 | write row.size
+        \\collide | stick
+    , &diag);
+    try spray.tick(.{ .frame = 0, .time_ns = 0 }, null, mock.asPlane());
+    try spray.tick(.{ .frame = 1, .time_ns = std.time.ns_per_s }, null, mock.asPlane()); // born; size becomes −0.5
+    spray.knobs.rate = 0;
+    try testing.expectEqual(@as(u32, 0), spray.last.refusals); // the birth tick collided at the spawn's size
+    try spray.tick(.{ .frame = 2, .time_ns = 2 * std.time.ns_per_s }, null, mock.asPlane());
+    try testing.expectEqual(@as(u32, 1), spray.last.refusals);
+    try testing.expect(std.mem.indexOf(u8, spray.last_refusal.text(), "collide") != null);
+    try testing.expect(std.mem.indexOf(u8, spray.last_refusal.text(), "row.size") != null);
+    // And the row was NOT landed by the refused word: the flow ended there.
+    try testing.expectEqual(@as(u8, 0), spray.pop.stuck[0]);
+}
+
+test "ground: no radius — the distance is the CENTRE's, and the clearance under the body is a kernel line" {
+    // The decision that came with `collide`'s radius (ledger, 2026-09-08):
+    // `ground` MEASURES where `collide` PLACES, so every number a `World`
+    // hands back stays about the row's centre — one convention, not two —
+    // and a kernel that wants the gap under the body says so itself. `sub`
+    // is rill core and row-legal, so this needs no word and no seam change,
+    // and matryoshka's `groundFn` compiles untouched.
+    //
+    // Mutation: `groundFn` given a radius and `Floor` subtracting it — u0
+    // and u1 become the same number, and the kernel line that says
+    // "clearance" silently means "clearance less the radius, twice".
+    const gpa = testing.allocator;
+    var reg = try tracerRegistry(gpa);
+    defer reg.deinit();
+    var mock = rill.MockPlane.init(gpa);
+    defer mock.deinit();
+    try mock.putValue("plane.drift.@em.k.radius", 0.75);
+    var floor = spindrift.Floor{};
+    var spray = try Spray.init(gpa, 4, 1, floor.asWorld());
+    defer spray.deinit();
+    spray.pos = .{ 0, fixed.fromInt(3), 0 }; // hovering: no gravity, no speed
+    spray.knobs = .{ .rate = fixed.fromInt(1), .speed = 0, .spread = 0, .life_ns = 100 * std.time.ns_per_s };
+    var diag = rill.registry.Detail{};
+    try spray.mountKernel(&reg, "k",
+        \\spawn
+        \\plane.drift.@self.k.radius | write row.size
+        \\ground | write row.u0
+        \\ground | sub row.size | write row.u1
+    , &diag);
+    try spray.tick(.{ .frame = 0, .time_ns = 0 }, null, mock.asPlane());
+    try spray.tick(.{ .frame = 1, .time_ns = std.time.ns_per_s }, null, mock.asPlane()); // born; size becomes 0.75
+    try spray.tick(.{ .frame = 2, .time_ns = 2 * std.time.ns_per_s }, null, mock.asPlane());
+    try testing.expectEqual(@as(u32, 0), spray.last.refusals);
+    try testing.expectEqual(fixed.fromInt(3), spray.pop.userOf(0)[0]); // the centre's, unchanged
+    try testing.expectEqual(fixed.fromInt(3) - fixed.fromRatio(75, 100), spray.pop.userOf(0)[1]);
+    try testing.expect(spray.pop.userOf(0)[0] != spray.pop.userOf(0)[1]);
 }
 
 test "ground: the nearest surface below, distance and normal, and nothing over no world" {
@@ -2474,9 +2747,13 @@ test "negative control, flipped: with `collide | stick` the floor and no world n
                     stuck += 1;
                     // Landed rows stay ON the floor — the first draft's
                     // gravity sank them 2.5 cells a tick after landing.
-                    // ON the floor (ruling 27b: the contact is the position);
-                    // the contact normal stored, up.
-                    try testing.expectEqual(@as(Fixed, 0), spray.pop.pos[1][id]);
+                    // The contact is the position, and since 2026-09-08 the
+                    // contact is the row's CENTRE, one radius up: this
+                    // kernel never writes `row.size`, so every row carries
+                    // the spawn's 1 cell and every landed centre is at 1.
+                    // The contact normal stored, up.
+                    try testing.expectEqual(spray.pop.size[id], spray.pop.pos[1][id]);
+                    try testing.expectEqual(fixed.ONE, spray.pop.size[id]);
                     try testing.expectEqual(fixed.ONE, spray.pop.normal[1][id]);
                     try testing.expectEqual(@as(Fixed, 0), spray.pop.vel[1][id]);
                 }

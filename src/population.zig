@@ -46,10 +46,12 @@ pub const schema = [_]rill.row.Field{
     // and reads its curves (beat 4, ruled); the renderer may read it too.
     .{ .name = "stuck", .kind = .scalar },
     // The contact normal `stick` stored; zero for every unstuck row. The
-    // resting offset is the APPEARANCE's (ruling 27b): a disc or a light is
-    // drawn at `pos + normal · size`, one rule for every row, so a landed
-    // row that shrinks stays on the surface by construction. `hear` samples
-    // at `pos`, the contact.
+    // resting offset is the SIM's since 2026-09-08: `collide` sweeps the row
+    // as a sphere of `row.size` and answers the CENTRE at contact, so `pos`
+    // is already one radius off the surface and the appearance draws a stuck
+    // row at `pos`, flat. Ruling 27b's `pos + normal · size` in a renderer
+    // is now a double count (see `spray.zig`'s `Appearance`). `hear` still
+    // samples at `pos`.
     .{ .name = "normal", .kind = .vec3 },
     // The row's opacity in [0, 1], born 1 (beat 6, campaign 2 G8). The
     // appearance's hit test takes it as a factor on the disc's coverage —

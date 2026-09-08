@@ -1942,3 +1942,172 @@ scene runs on until the reap happens rather than assuming the next tick.
 Three gate-holes in one word, each found by a mutation surviving. That is the
 third time today, and it keeps being the same shape: the gate asserts the
 thing that is easy to assert rather than the thing that is claimed.
+
+## A row is a SPHERE — `collide` takes a radius — 2026-09-08
+
+**Measured first, in matryoshka's playground.** A sphere and a box rest on
+the floor at y = 0; `roaches` walk that floor and pass straight through
+both. From a live population dump: the density inside the props' floor
+footprints is **1.1–1.3× the density of a control annulus at the same
+radius from the swarm centre** — not reduced blocking, *no blocking at
+all*. The cause is geometric and certain. The props occupy y ∈ [0, 1.5] and
+y ∈ [0, 1.1]; the rows rest at y = 0 exactly (755 of 790 in the dump). At
+y = 0 the sphere is a single tangent point and the box's bottom face is
+coplanar with the row's path — so a **zero-width point travelling through
+the one height where both props have no cross-section** hits nothing. No
+nudge to a prop's height fixes the class of that, which is why the ruling
+was to fix it properly: *a row is a sphere of `size`, and collision should
+treat it as one.*
+
+**The seam.** `world.zig`:
+
+    collideFn: *const fn (ctx, from: Vec, to: Vec, radius: Fixed) ?Hit
+
+`groundFn` is unchanged. `collide` passes the row's own `size`, so nothing
+new is authored and no kernel changes: the radius is the field the
+appearance already draws with and `deposit` already marks with, because a
+row with two widths would be two rows.
+
+**Rule 1 — `r = 0` is the old point test, bit for bit.** Christian's words:
+*"We can still preserve the cheap point test."* Both mocks get the radius
+by moving the plane the CENTRE is tested against, not by a second branch:
+`Floor` tests against `self.y + r`, `Plane` against `depth − r`. At r = 0
+those are `self.y` and `depth`, the same arithmetic and the same bits, and
+a host implementing this may not carry a "safety" epsilon into that path —
+G0's byte-identity and the campaign's G7 bit-identity claim are only worth
+anything if the zero-radius answer is unchanged.
+
+**Rule 2 — `at` is the sphere's CENTRE at contact, not the surface point;
+`normal` stays the SURFACE normal.** `stick` and `slide` both write
+`pos ← at`, so a surface point would put the row's centre ON the wall and
+the next tick's sweep would start already interpenetrating — the same bug
+in a new hat. A landed row's centre therefore rests one radius off the
+surface. **`stick` and `slide` learned nothing** to make that true: they
+write the point they were handed, which is the test that the rule is in the
+right place.
+
+**Rule 3, recorded and NOT built here — ruling 27b is now a double count.**
+27b put the resting offset in the APPEARANCE: a landed row is drawn at
+`pos + normal · size`, one rule for every row with no stuck branch, so a
+landed row that shrinks stays tangent by construction. The sim now holds
+the row a radius off itself, so a renderer that still adds `normal · size`
+draws a landed row TWO radii up. **The rule moves into the sim — one rule
+instead of two — and matryoshka must draw a stuck row at `pos`, flat,
+exactly as it draws a free one.** Written into `spray.zig`'s `Appearance`
+(the contract a host reads), `population.zig`'s `normal` field,
+`drift-words.md` and the README; the renderer is matryoshka's and is a
+separate beat. What 27b bought and this costs: a row that shrinks AFTER
+landing keeps its landing centre and lifts off, where the renderer's rule
+recomputed the offset from the live size every frame. Recorded, with a
+trigger — the first customer scene where a landed row shrinks enough to see
+it (fire.rill's embers shrink by 0.3 cells, a tenth of a metre, under the
+pixel) — and the fill is a sim-side re-rest, `pos ← pos − normal · Δsize`,
+which is state owing a dump and is why it is not free.
+
+**`ground` gets NO radius, and that is a decision, not an omission.**
+`collide` had to take one because its answer is a POSITION the row adopts,
+and a position that ignores the radius is a position inside the wall.
+`ground` answers a distance and a normal; nothing moves to them. So every
+number a `World` hands back stays about the row's CENTRE — one convention
+rather than two, where a `ground` that quietly subtracted the radius would
+answer clearance while `collide` answered centres and a kernel reading both
+would have to know which was which. The clearance under the BODY is already
+spellable at the row, exactly and with no new word: **`ground | sub
+row.size`** (`sub` is rill core and row-legal). It costs a host nothing —
+`groundFn` is untouched, so matryoshka's compiles as it stands. Recorded
+with its trigger: the first word that PLACES a row from `ground`'s answer —
+a `settle` or a `hover` — is placement, not measurement, and wants the
+radius the way `collide` does.
+
+**The mocks' conventions, restated for a radius.** A crossing is the SPHERE
+going from clear-or-touching to overlapping. *Ending exactly TOUCHING is
+not a crossing* — the point on the wall is on the wall, and a landed row
+asks again every tick and must not be told "you are hitting me" for ever.
+That one turns out to be load-bearing rather than tasteful: a resting row's
+segment is `from == to`, and the test is the only thing between that and
+`fromRatio(0, 0)` (the mutation that flips it to `>` does not fail the
+resting gate, it CRASHES it). *A sphere found OVERLAPPING is pushed back
+out along the normal until it just touches*, at t = 0 — the resume of
+2026-09-07, one radius further out.
+
+**Ruling 20 (B), still open, and what the radius did to it.** Nothing: the
+sliver is `g · dt²` of the CENTRE, and the centre does not care how big the
+row is. What changes is what the sliver LOOKS like — at r = 0 a row inside
+the surface is a row under the floor; at r > 0 it is a sphere dented by
+`g · dt²` with its body still mostly outside, and the resume presses the
+dent out every tick. So the radius shrinks the symptom by the ratio of the
+sliver to r and removes nothing. The fix is still to test the segment the
+integrate will actually take.
+
+**Gates, eight, and every mutation run per gate rather than as a suite
+count.** In `world.zig`, where the geometry lives: (1) *a radius of zero is
+the point test, bit for bit* — beat 4's own literals, plus the normal and
+the material it never asserted, bitten by `surface = y + r + 1` (an ulp of
+"safety") and SURVIVING the radius-dropped mutation, which is the point of
+it. (2) *a sphere stops a radius short, and its centre rests a radius off*
+— bitten by the radius ignored, by `at` answered as the surface point, and
+by the resume placing the centre on the face. (3) *the roaches bug in
+miniature* — a centre that passes ABOVE the plane the whole way while the
+body crosses it, with the point control returning null beside it; bitten by
+the radius dropped, which is the shipped bug reproduced. (4) *the second
+mock sweeps its sphere too* — `Plane` is a second implementation and a
+radius that reached only `Floor` would leave every sliding row half inside
+its wall. In `tests.zig`, driven through kernels: (5) *`collide` sweeps the
+row's own `size`* — three radii from one knob (0, 0.25, 1), each landing at
+its own radius with its own `t`, held for ten further ticks with no creep
+and no sink; bitten by `collide` passing 0, by passing a constant, by
+`stick` adding the radius (the double count), and by the sweep's
+stuck-velocity hold. (6) *the roaches bug driven through a kernel* — one
+kernel, one seed, one schedule, and only the size differs: the sphere is
+stopped half way along the tick its body touched and rests at y = 1; the
+point sails over, still airborne at y = 0.5, past the far side. (7) *a
+negative `row.size` refuses by name* — a negative radius moves the surface
+the wrong way, so the row tunnels FURTHER than a point does; bitten by a
+`@max(0, r)` clamp and by dropping the guard. (8) *`ground` has no radius*
+— the distance is the centre's and the clearance is a kernel line; bitten
+by teaching `kGround` to subtract `p.size`.
+
+**Three gates MOVED, examined rather than re-baselined.** The beat-4
+landing gate (the row lands at y = 0.5, its size at the landing tick, and
+the size it collides with is read from the SNAPSHOT — ruling 20's rule, one
+word further along); the negative control (every landed row at y = its
+size, 1, since that kernel never writes one); and the wall gate below.
+
+**Found: a mutation that had been a decoration since beat 4.** The slide
+wall gate names "`pos ← at` dropped — the row is through the wall" and it
+did not bite, on the moved scene or on HEAD (checked in a worktree, not
+argued). The scene threw the row from x = 2 at 2 cells/s, so it arrived
+EXACTLY on the wall: `d0 = 0`, `t = 0`, `at == from`, and the write put
+back the position the row already had. Re-deriving the scene for a unit
+sphere is what surfaced it. It is thrown from 3.5 now, the contact is
+strictly inside the tick (t = 0.25), and the mutation bites. The other half
+of the old scene — "ending exactly touching is not a crossing" — moved to
+`world.zig`, where the geometry it is about lives.
+
+**Found: in `Plane`, the radius appears twice and one of them hides the
+other.** Dropping it from the crossing test alone leaves `t` wrong (0.5
+where it should be 0.25) while the `off` correction — which exists to kill
+beat 4's double-flooring ulp — projects the point back onto the offset
+plane and makes `at` RIGHT. So that mutation is invisible to any gate that
+watches only the position, and the slide gate is one: it survived there and
+bit only on the mock's own gate, which asserts `t`. A contact point and a
+contact time can disagree, and a kernel reading `t` would have been the one
+to find out.
+
+**Seen working, end to end, not only in the gates.** `drift-run` with
+`kernels/soot.rill` over the mock floor, 300 ticks, the same seed and the
+same knobs on HEAD and on this: the dump's `pos_y` floor moves from
+**0.0000** to **0.0501** cells and nothing else in it moves — same live
+count, same tick, same age range, same ceiling. soot.rill sizes its embers
+`row.seed | mul 0.05 | add 0.05`, so the smallest landed row rests at
+exactly its own radius, and the row that used to sit with its centre in the
+floor now sits on it.
+
+**What matryoshka must change.** (a) `SprayWorld.collideThunk` gains the
+`radius: Fixed` parameter — it will not compile without it — and the swept
+query must use it (the parallel beat building the swept-sphere BVH query is
+the fill); `groundThunk` is untouched. (b) It must answer the sphere's
+CENTRE at contact, not the surface point, and keep the surface normal.
+(c) `radius = 0` must take the same path it takes today, bit for bit.
+(d) The appearance must stop adding `normal · size` for a stuck row and
+draw it at `pos` — ruling 27b's rule now lives in the sim.
