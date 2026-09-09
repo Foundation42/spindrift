@@ -2111,3 +2111,168 @@ CENTRE at contact, not the surface point, and keep the surface normal.
 (c) `radius = 0` must take the same path it takes today, bit for bit.
 (d) The appearance must stop adding `normal · size` for a stuck row and
 draw it at `pos` — ruling 27b's rule now lives in the sim.
+
+## The fifteen words say what they are FOR — tags, 2026-09-09
+
+rill grew `tags` on `OpDef` this morning (rill `8e044ec`): free-form
+strings, an operator carries several, it is found under each, and **the
+first is its home** — declaration order carries primacy. Christian's
+reframe is what settled the model: *"I guess we could view them as filters
+huh. So an operator could exist in multiple groups. Think of them as
+#tags."* They feed a coming graph-editor palette, a console `help`,
+tab-complete and a vocabulary document for an agent to read.
+
+rill tagged its 109. Spindrift's fifteen were not, and `rill ops --tag
+untagged --host-row` printed them as a fifteen-line to-do list under the
+heading *"nobody said"*. Fifteen untagged words is a bad first palette.
+
+**Eleven tags: six of rill's borrowed, five minted.** The rule for
+borrowing was that rill's own SENTENCE had to be true of the word, not
+merely nearby — a tag is a `{name, doc}` pair and the doc is what a palette
+shows in the tooltip.
+
+| word | home | also | why |
+|---|---|---|---|
+| `spawn` | `life` | `motion`, `random` | birth is the lifecycle word; it sets `vel`; the ±spread is a seeded draw off `row.seed`, bit-identical, which is `random`'s sentence exactly |
+| `perish` | `life` | `time` | the other end of it; the threshold is a duration |
+| `gravity` | `motion` | — | the only word in the set that is nothing but a force |
+| `relax` | `envelope` | `time` | it IS rill's `ease` at the row — "a value in motion over fed time: it chases" |
+| `near` | `neighbourhood` | `space` | `within` asked of a whole population; "what is near what" is rill's own sentence |
+| `push` | `neighbourhood` | `motion` | separation, and it adds to `vel` |
+| `align` | `neighbourhood` | `motion` | alignment, likewise |
+| `sync` | `neighbourhood` | `oscillator` | a phase oscillator; the coupling is what is new, not the going round |
+| `infect` | `neighbourhood` | — | transmission; it moves a channel, not the row, so it carries nothing else |
+| `deposit` | `sink` | `field` | `cast`'s row-plane sibling, filed with it |
+| `hear` | `field` | — | the read half |
+| `collide` | `surface` | — | finds one |
+| `ground` | `surface` | — | measures to one |
+| `slide` | `surface` | `motion` | runs along one, by taking the normal out of `vel` |
+| `stick` | `surface` | — | lands on one |
+
+**`stick` is deliberately not `motion`.** It stops the row, but it does not
+write `vel` — the SWEEP drops the velocity because `row.stuck` is set. A
+tag for an effect the word does not perform is a tag that stops being true
+the day the sweep changes.
+
+**`gravity` is not a world-contact word.** The brief grouped it with
+`collide` and `slide`; it never touches `World`, it is in `WORDS` and not
+`TRACER`, and it is a force. Likewise `relax` is not a lifecycle word: it
+is `ease`, and putting it with `spawn` and `perish` would have hidden that
+the row plane had already borrowed one of rill's shapes.
+
+**The one word that sat awkwardly is `deposit`, and the awkwardness is
+information about the word.** It is a sink and it is a field write, and
+those are two different questions a reader asks. Filing it under `field`
+beside `hear` would have separated it from `cast`, which is the word it is
+a copy of; filing it under `sink` beside `cast` separates it from `hear`.
+`sink` won because the kinship with `cast` is Christian's own filing, and
+`field` — carried, not home — is what reunites the pair. That is also what
+makes `field` a genuine cross-cut rather than a second name for `hear`.
+
+**Two tags where the count is one, and both stay.** `motion` is home to
+`gravity` alone and `field` to `hear` alone. rill has the same shape
+(`contract` and `rbf` hold two each, and `gate` is home to nothing at all),
+and the alternative — folding a one-member home into a bigger one — is how
+`misc` gets born.
+
+**Nothing enforced became a tag**, and two names died of it. `#world` for
+the tracer four would restate which door registered them, which
+`registerTracer` already refuses at mount by leaving the word unknown; a
+label shadowing a real refusal is free to drift from it. `#crowd` and
+`#contact` are SLATE lane names that mount checks — a tag wearing an
+enforced name invites the confusion the rule exists to prevent. `surface`
+and `neighbourhood` say what the words are for instead. Every rejected name
+is recorded at `TAGS` in `words.zig`, with its reason.
+
+**Sentences, not just nouns.** Each minted tag carries a `TagDoc`, and they
+go in through `describeTag` at `words.register`. A second sentence for one
+tag is refused there — which means a tag rill later adopts under one of
+these five names fails every host at startup, loudly, rather than leaving
+two descriptions racing to be the one a palette read last. Christian's own
+Blade3D is the evidence: `Physics` declared twice with two descriptions,
+`Constraints` misspelled `Contraints`, groups with a Description and no
+DisplayName, unnoticed for years.
+
+**Where a human reads them: `zig build run -- --words`.** drift-run has a
+`World`, so it registers all fifteen and prints them grouped by home with
+each tag's sentence — `rill ops` for the words rill cannot see. `rill ops
+--host-row` CANNOT show them and must not be made to: that flag registers
+the stubs in `rill/tools/host_row.zig`, which exist so rill's parser can
+read a kernel file, and a second copy of this table is a copy that drifts.
+The tags live on the registered word, and matryoshka will see them the
+moment it registers spindrift's words.
+
+**`row-legal` was left alone, and here is why.** It groups by VERDICT —
+row-legal now, stateful candidate, refused — which is the question recon
+R-a asks it, and it walks rill's core only (spindrift's fifteen are all
+row-legal by construction, so they would land in one bucket and say
+nothing). A second grouping by tag would answer neither question well, and
+a tag COLUMN would be output no gate watches. The listing that needed
+building was the one that did not exist: `--words`.
+
+### The gates, and the mutation each was paid for
+
+All five are exhaustive over `words.WORDS ++ words.TRACER`, in G2's shape,
+so a sixteenth word is caught by all of them at once.
+
+1. *G22: every drift word carries a tag, and every tag it carries has a
+   sentence* — plus both rosters closed both ways, disjoint from rill's,
+   and sorted. Bitten by (a) a typo'd tag, `"spce"` for `"space"` on
+   `near`: *"'near' carries tag 'spce', which nobody has described"*, and
+   the cross-cut gate fired too. That mutation is the one Blade3D actually
+   made. (b) `.tags` deleted from `spawn`: it falls through to `UNTAGGED`
+   at the registry's door SILENTLY — rill defaults a tag rather than
+   refusing, because a wrong tag shows a wrong tray while a wrong route
+   computes on the wrong thread — and the gate says *"'spawn' is untagged
+   — spindrift's table declares, it does not fall back"*. That default is
+   the whole reason this audit is exhaustive over the table instead of
+   trusting `register` to say no. (c) `"gate"` added to `infect`: rill
+   DESCRIBES `gate`, so the `tagDoc` branch is routed straight around and
+   only the roster check bites — *"'infect' carries tag 'gate', which is on
+   neither roster"*. Without (c) the roster half would have been
+   decoration.
+2. *G22: the first tag is the home — declaration order, never alphabetical*
+   — bitten by sorting `push`'s and `deposit`'s tag lists, which is the
+   tidying edit that looks harmless: it compiles, every tag is still
+   carried, every sentence still exists, gate 1 stays green, and `push`
+   files under `motion` beside `gravity`, away from the `near` it cannot
+   run without. Each fixture also asserts it WOULD have moved
+   (`lessThan("motion", "neighbourhood")`), because `spawn`, `near`,
+   `sync`, `perish` and `relax` are alphabetical already and any of them
+   would have made the gate a decoration.
+3. *G22: the manual's tag tables say what the registry says* — the rows in
+   `drift-words.md` are REBUILT from `words.TAGS`, `words.BORROWED` and the
+   registry and compared verbatim, both tables, plus a count off the `#`
+   sigil so a sixth row cannot be invented. Bitten by rewording one
+   sentence in the manual alone ("a row's start" for "a row's beginning"):
+   *"the manual has no such row"*, with the row it wanted printed. G2's
+   word-table gate now skips `#` rows, and the sigil is a safe
+   discriminator because `register` refuses an operator wearing one.
+4. *G22: the cross-cutting tags cut across* — `field`, `motion`,
+   `oscillator`, `random`, `space` and `time` each COUNTED off the registry
+   for two or more distinct homes, measured over core + spindrift because
+   that is the registry a host holds and because four of the six span into
+   rill's homes (`space` reaches `near` from `within`, `random` reaches
+   `spawn` from `noise`). Bitten by dropping `field` from `deposit` — one
+   edit, and the tag becomes a sub-name for `hear`: *"'field' is carried
+   only by words at home in one place — it is a sub-name, not a
+   cross-cut"*. `life`, `neighbourhood` and `surface` are pinned the
+   opposite way, as homes (rill's `constant` precedent): everything
+   carrying them is at home under them, so if one ever spans, that is a
+   finding about the word that moved.
+5. *G22: `--words` prints the fifteen under their home tags, each heading
+   carrying that tag's sentence* — the human end. Bitten by (a) filing on
+   `def.tags[def.tags.len - 1]` instead of `def.home()`, which compiles and
+   still prints seven groups of fifteen: *"no heading 'life (2) — ' in the
+   listing"*; and (b) printing the heading as `"{s} ({d})"` with the
+   sentence dropped, which is a palette of bare nouns with no tooltip —
+   same red. `reg.tagDoc(h) orelse "(no sentence)"` is NOT a mutation here
+   and is not claimed as one: every tag on a registered word has a
+   sentence, so the fallback is unreachable and the code routes around the
+   edit.
+
+**What matryoshka gets, and it needs no change to get it.** Its console
+`help` and any palette it builds group spindrift's words the moment they
+are registered; the tags come off the registry, not off a table over there.
+Its own `(verb, subop)` vocabulary already organises itself, because rill
+prepends a two-word name's first word as the home.

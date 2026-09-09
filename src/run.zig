@@ -87,6 +87,7 @@ fn usage() void {
         \\  --ear <$c@x,y,z>      print an ear's reading of $c at a post each tick (repeatable)
         \\  --every <n>           print every n ticks (default 1; 0 = end only)
         \\  --dump <file>         write the population after the last tick
+        \\  --words               print the row words grouped by tag, and exit
         \\
         \\Example — 400 embers a second under gravity, one second, dumped:
         \\  drift-run --rate 400 --speed 3 --spread 1 --gravity -9.8 --life 800 --ticks 60 --dump embers.struple
@@ -96,6 +97,72 @@ fn usage() void {
         \\    --casts '$dankness:0.02' --rill wind.rill --ear '$dankness@0,3,0' --ticks 120
         \\
     , .{});
+}
+
+/// The words `--words` lists: everything a spray can be told to do, tracer
+/// words included, because drift-run has a `World` and a reader asking what
+/// the vocabulary IS should not have to know which door each half came
+/// through.
+const LISTED = spindrift.words.WORDS ++ spindrift.words.TRACER;
+
+fn byName(_: void, a: []const u8, b: []const u8) bool {
+    return std.mem.lessThan(u8, a, b);
+}
+
+/// `--words` — the row words grouped by their HOME tag, each heading
+/// carrying that tag's sentence: `rill ops` for the fifteen words rill
+/// cannot see.
+///
+/// **This is where a human reads spindrift's tags in a running system.**
+/// `rill ops --host-row` cannot show them: that flag registers the STUBS in
+/// `rill/tools/host_row.zig`, which exist only so rill's own parser can read
+/// a kernel file, and tagging them would be a second copy of this table free
+/// to drift from it. The tags live here, on the registered word, and this
+/// prints what a registry that has walked `words.register` actually holds.
+///
+/// The home is `def.home()` and never `def.tags[0]` read off the literal:
+/// the registry RESOLVES tags at its one door (a two-word name prepends its
+/// first word), so a reader that re-derived the home would be a second
+/// answer free to disagree with the palette's.
+fn printWords(w: anytype, reg: *const rill.Registry) !void {
+    var homes: [LISTED.len][]const u8 = undefined;
+    var n: usize = 0;
+    for (LISTED) |word| {
+        const h = reg.get(reg.find(word.name).?).home();
+        const seen = for (homes[0..n]) |x| {
+            if (std.mem.eql(u8, x, h)) break true;
+        } else false;
+        if (!seen) {
+            homes[n] = h;
+            n += 1;
+        }
+    }
+    std.mem.sort([]const u8, homes[0..n], {}, byName);
+
+    try w.print("spindrift's row words: {d}, in {d} groups\n\n", .{ LISTED.len, n });
+    for (homes[0..n]) |h| {
+        var names: [LISTED.len][]const u8 = undefined;
+        var m: usize = 0;
+        for (LISTED) |word| {
+            const def = reg.get(reg.find(word.name).?);
+            if (std.mem.eql(u8, def.home(), h)) {
+                names[m] = def.name;
+                m += 1;
+            }
+        }
+        std.mem.sort([]const u8, names[0..m], {}, byName);
+        try w.print("{s} ({d}) — {s}\n", .{ h, m, reg.tagDoc(h) orelse "(no sentence)" });
+        for (names[0..m]) |name| {
+            const def = reg.get(reg.find(name).?);
+            try w.print("  {s:<8} {s}\n", .{ name, def.help });
+            if (def.tags.len > 1) {
+                try w.print("  {s:<8} also:", .{""});
+                for (def.tags[1..]) |t| try w.print(" {s}", .{t});
+                try w.print("\n", .{});
+            }
+        }
+        try w.print("\n", .{});
+    }
 }
 
 const Options = struct {
@@ -239,6 +306,17 @@ pub fn main() !u8 {
         const a = args[i];
         if (std.mem.eql(u8, a, "--help") or std.mem.eql(u8, a, "-h")) {
             usage();
+            return 0;
+        }
+        if (std.mem.eql(u8, a, "--words")) {
+            var wreg = try rill.Registry.init(gpa);
+            defer wreg.deinit();
+            try rill.registerCore(&wreg);
+            try spindrift.words.register(&wreg);
+            try spindrift.words.registerTracer(&wreg);
+            var out = std.io.bufferedWriter(std.io.getStdOut().writer());
+            try printWords(out.writer(), &wreg);
+            try out.flush();
             return 0;
         }
         if (i + 1 >= args.len) {
@@ -544,6 +622,65 @@ test "drift-run: a plane knob overrides the command line, int exact and float fl
     try std.testing.expectEqual(fixed.fromInt(400), knobFromPlane(&mock, &buf, "em", "rate").?);
     try mock.putValue("plane.drift.@em.speed", @as(f64, 2.5));
     try std.testing.expectEqual(@divExact(fixed.fromInt(5), 2), knobFromPlane(&mock, &buf, "em", "speed").?);
+}
+
+test "G22: --words prints the fifteen under their home tags, each heading carrying that tag's sentence" {
+    // The human end of the tag beat: `rill ops --host-row` CANNOT show these
+    // — that flag registers the stubs in `rill/tools/host_row.zig`, which
+    // exist so rill's parser can read a kernel and are deliberately left
+    // untagged, because a second copy of this table is a copy that drifts.
+    // So this listing is where the tags are read, and it is gated like any
+    // other claim about output.
+    //
+    // Mutation: print `def.tags[def.tags.len - 1]` for the home instead of
+    // `def.home()`. It compiles, it prints seven groups of fifteen, and
+    // `push` files under `motion` — the same drift the tags-are-sorted
+    // mutation causes, seen from the reader's end rather than the table's.
+    // Mutation: print the heading as `"{s} ({d})"` and drop the sentence.
+    // Every group still prints, correctly grouped, with a bare noun for a
+    // heading — a palette with seventeen one-word filters and no tooltip,
+    // which is the failure the `{name, doc}` pair was built to prevent.
+    // (`reg.tagDoc(h) orelse "(no sentence)"` is NOT a mutation here: every
+    // tag on a registered word has a sentence, so the fallback is
+    // unreachable and the code routes around the edit.)
+    const gpa = std.testing.allocator;
+    var reg = try rill.Registry.init(gpa);
+    defer reg.deinit();
+    try rill.registerCore(&reg);
+    try spindrift.words.register(&reg);
+    try spindrift.words.registerTracer(&reg);
+
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    defer out.deinit(gpa);
+    try printWords(out.writer(gpa), &reg);
+    const text = out.items;
+
+    // Every word is listed, once.
+    for (LISTED) |word| {
+        var buf: [64]u8 = undefined;
+        const needle = try std.fmt.bufPrint(&buf, "\n  {s} ", .{word.name});
+        if (std.mem.indexOf(u8, text, needle) == null) {
+            std.debug.print("'{s}' is registered and `--words` does not list it\n", .{word.name});
+            return error.TestUnexpectedResult;
+        }
+    }
+    // Every heading is a tag WITH its sentence — the pair, not the noun.
+    for ([_][]const u8{ "life (2) — ", "neighbourhood (5) — ", "surface (4) — ", "sink (1) — " }) |head| {
+        if (std.mem.indexOf(u8, text, head) == null) {
+            std.debug.print("no heading '{s}' in the listing\n", .{head});
+            return error.TestUnexpectedResult;
+        }
+    }
+    try std.testing.expect(std.mem.indexOf(u8, text, "neighbourhood (5) — the rows close by, and what they do to this one\n") != null);
+    // …and the home/also split is what a reader sees: `push` under
+    // `neighbourhood`, with `motion` on its also-line and not as a heading
+    // of its own beyond `gravity`'s.
+    const nb = std.mem.indexOf(u8, text, "\nneighbourhood (").?;
+    const push = std.mem.indexOf(u8, text, "\n  push ").?;
+    const after = std.mem.indexOfPos(u8, text, nb + 1, "\n\n").?;
+    try std.testing.expect(push > nb and push < after);
+    try std.testing.expect(std.mem.indexOf(u8, text[push..after], "also: motion") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "\nmotion (1) — ") != null);
 }
 
 test "drift-run: the embedded kernel is the shipped text and parses with the words registered" {

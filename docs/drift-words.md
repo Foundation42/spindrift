@@ -128,6 +128,73 @@ lines climb; `approach` reads as motion in space and this is a scalar;
 it has not got; `ease` and `ramp` are rill's own, on the plane and
 stateful — a different thing wearing a near name.
 
+## The tags
+
+Every row word says what it is FOR (`src/words.zig`, `TAGS` and
+`BORROWED`), in the vocabulary rill's `OpDef.tags` opened on 2026-09-09.
+They feed a palette, a console `help` and tab-complete; they refuse
+nothing. **The first tag is a word's HOME** — a grouped listing files it
+there and the rest are how it is found. Read the whole thing out of a
+running registry with `zig build run -- --words`, which is `rill ops` for
+the fifteen words rill cannot see. (`rill ops --host-row` cannot show
+them: that flag registers the stubs in `rill/tools/host_row.zig`, which
+exist so rill's parser can read a kernel file and are deliberately left
+untagged — a second copy of this table is a copy that drifts.)
+
+Five are minted here, because the row plane needed what rill's seventeen
+had no name for:
+
+| tag | what it is | at home |
+|---|---|---|
+| `#field` | a quantity spread over space: read it where the row is, or leave a mark on it | `hear` |
+| `#life` | a row's beginning and its end: launched at birth, retired at death | `perish`, `spawn` |
+| `#motion` | what changes where a row is going: the launch, the forces on it, and what a surface takes away | `gravity` |
+| `#neighbourhood` | the rows close by, and what they do to this one | `align`, `infect`, `near`, `push`, `sync` |
+| `#surface` | solid geometry: what the row hit, where, and what it does about it | `collide`, `ground`, `slide`, `stick` |
+
+Six are borrowed from rill. Their sentences live in `rill/src/ops.zig` and
+are **not** copied here: a second sentence for one tag is refused at the
+registry door, on evidence — Blade3D's operator groups, free-form and
+unaudited, ended up declaring `Physics` twice with two descriptions and
+`Constraints` misspelled `Contraints`.
+
+| tag | carried by | at home |
+|---|---|---|
+| `#envelope` | `relax` | `relax` |
+| `#oscillator` | `sync` | — |
+| `#random` | `spawn` | — |
+| `#sink` | `deposit` | `deposit` |
+| `#space` | `near` | — |
+| `#time` | `perish`, `relax` | — |
+
+`deposit` is at home beside rill's `cast` and `relax` beside its `ease`,
+which is what borrowing buys: the row's copy of a word files with the
+original. `#field` and `#motion` are CROSS-CUTS and earn their place by
+spanning homes — `#field` reaches `deposit` in `sink`, `#motion` reaches
+`spawn` in `life`, `push` and `align` in `neighbourhood`, `slide` in
+`surface`. `#life`, `#neighbourhood` and `#surface` claim nothing of the
+sort: everything carrying them is at home under them, and G22 pins that,
+so widening one is a decision rather than a drift.
+
+Nothing enforced is a tag. `row.only`, the slate's `publishes`/`consumes`
+and which door registers a word all REFUSE programs; a tag is descriptive.
+That is why the tracer four are `#surface` and not `#world` — `#world`
+would restate the refusal `registerTracer` already gives — and why the
+neighbourhood tag is not `crowd` and the tracer tag not `contact`: both
+are slate lane names the mount checks, and a tag wearing an enforced name
+invites exactly that confusion.
+
+Rejected at read-aloud: `lattice` and `channel` for `#field` (a lattice is
+how a field is sampled, and a channel is a static kind the registry
+already carries); `lifecycle`, `birth` and `age` for `#life` (a compound,
+a half, and a row field); `force`, `velocity` and `physics` for `#motion`
+(force excludes `slide` and `spawn`, velocity is a row field, physics
+smears and is Blade3D's own duplicated group); `crowd`, `flock`, `swarm`,
+`neighbour` and `social` for `#neighbourhood` (a slate lane, then three
+that only three of the five words do, then a noun where the tag is a
+subject); `contact`, `world`, `collision` and `hit` for `#surface` (a
+slate lane, a restated refusal, a word `ground` does not do, an event).
+
 ## `over` — rill's word now
 
 `row.age | over row.life [1.0, 0.7, 0.0]` — a value over normalised life,

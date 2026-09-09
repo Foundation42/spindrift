@@ -22,6 +22,11 @@
 //! That is G2's structural half, and it binds this repo the way it binds
 //! any host. The other half — every word is row-legal, exact, row-only,
 //! and named in the manual — is `tests.zig`'s audit, both ways.
+//!
+//! **Every word says what it is FOR** (`TAGS` below, 2026-09-09). Fifteen
+//! untagged words made a bad first palette — `rill ops --tag untagged` named
+//! all fifteen the day tags landed — and G22 is the audit that keeps a
+//! sixteenth from slipping through.
 
 const std = @import("std");
 const rill = @import("rill");
@@ -620,11 +625,96 @@ fn kSync(ctx: *row.Ctx) row.Error!void {
     try ctx.write(wr.ref, .replace, .{ .scalar = next });
 }
 
+/// **The tags spindrift MINTS** — what a row word is FOR, in the vocabulary
+/// rill's `OpDef.tags` opened (rill `8e044ec`, 2026-09-09). Five, because
+/// five is what the row plane needed and rill's seventeen had no name for;
+/// the six rill tags these words also carry are in `BORROWED` and their
+/// sentences are NOT restated here. A second sentence for one tag is refused
+/// at `describeTag`, and it is refused on evidence: Christian's own Blade3D
+/// declares `Physics` twice with two descriptions, and `Constraints`
+/// misspelled `Contraints`, unnoticed for years.
+///
+/// **The first tag is the home.** Declaration order, never alphabetical:
+/// `push` is at home in `neighbourhood` and *found* under `motion`, and a
+/// tidying sort of its list would file it beside `gravity`, away from the
+/// `near` it cannot run without. G22 pins that with `push`, `align`,
+/// `deposit` and `slide` — the four whose lists a sort would actually move.
+///
+/// **Nothing enforced is in here.** `row.only`, `publishes`/`consumes` and
+/// which door registered a word all REFUSE programs; a tag is descriptive
+/// and refuses nothing, so a tag restating one would be a label free to
+/// drift from a real refusal. That is why the tracer four are not `world`:
+/// `world` would say "registered through `registerTracer`", which the mount
+/// already says by refusing an unknown word. `surface` says what they are
+/// *for* instead. Same reason the neighbourhood tag is not `crowd` and the
+/// tracer tag is not `contact` — both are SLATE lane names that mount
+/// checks, and a tag wearing an enforced name invites exactly the confusion
+/// the rule exists to prevent.
+///
+/// Read aloud, with what was rejected:
+///
+///   - `field` — rejected `lattice` (the implementation; a lattice is *how*
+///     a field is sampled, and the language says `$chan`), `channel` (a
+///     static KIND the registry already carries), `medium` (vague).
+///   - `life` — rejected `lifecycle` (a compound; Christian's register is
+///     single nouns — Blade3D reads `Logical`, `Curve`, `Noise`), `birth`
+///     (half of it), `age` (a row field, and only `perish` reads it).
+///   - `motion` — rejected `force` (it excludes `slide`, a projection, and
+///     `spawn`, an initial condition: both motion, neither a force),
+///     `velocity` (a row field name), `physics` (smears — `collide` is
+///     physics too, and it is the group Blade3D declared twice).
+///   - `neighbourhood` — rejected `crowd` (the slate lane, above), `flock`
+///     and `swarm` (only three of the five flock; `sync` and `infect` do
+///     not), `neighbour` (an operator is not a neighbour; the tag is the
+///     subject), `social` (a phase oscillator is not sociable).
+///   - `surface` — rejected `contact` (the slate lane), `world` (above),
+///     `collision` (`ground` is a proximity query and collides with
+///     nothing), `hit` (an event, not a subject).
+///
+/// Sorted, like rill's roster, because a listing prints tags sorted and a
+/// reader comparing the two should not have to re-sort one.
+pub const TAGS = [_]rill.registry.TagDoc{
+    .{ .name = "field", .doc = "a quantity spread over space: read it where the row is, or leave a mark on it" },
+    .{ .name = "life", .doc = "a row's beginning and its end: launched at birth, retired at death" },
+    .{ .name = "motion", .doc = "what changes where a row is going: the launch, the forces on it, and what a surface takes away" },
+    .{ .name = "neighbourhood", .doc = "the rows close by, and what they do to this one" },
+    .{ .name = "surface", .doc = "solid geometry: what the row hit, where, and what it does about it" },
+};
+
+/// **The rill tags a spindrift word carries**, and the argument for each.
+/// Listed rather than described — rill owns their sentences — so that the
+/// audit can close over the whole set both ways, and so a tag rill RETIRES
+/// lands as a red gate here rather than as a palette filter that finds
+/// nothing.
+///
+///   - `envelope` — `relax` IS rill's `ease` at the row: "a value in motion
+///     over fed time: it chases". It emits the step rather than the arrival
+///     so influences compose, which is a difference in the port, not in what
+///     the word is for.
+///   - `oscillator` — `sync` is a phase oscillator, the same family as
+///     `wave` and `lfo`; the coupling is what is new, not the going round.
+///   - `random` — `spawn`'s ±spread is a seeded draw off `row.seed`,
+///     bit-identical on every machine, which is that sentence exactly.
+///   - `sink` — `deposit` is `cast`'s row-plane sibling and `cast` is at
+///     home there, so the two stay filed together. `class` is `.reads` and
+///     not `.effect` (a row word may not write the plane), which is the
+///     proof this tag restates nothing enforced.
+///   - `space` — `near` is `within` asked of a whole population, and "what
+///     is near what" is rill's own sentence for the tag.
+///   - `time` — `perish`'s threshold is a duration and `relax`'s rate is per
+///     second. Deliberately NOT on `gravity`, `push`, `align`, `sync` or
+///     `infect`: their `dt` is a multiplier, not the subject, and a tag true
+///     of eleven of fifteen words filters nothing.
+///
+/// Sorted, for `TAGS`'s reason.
+pub const BORROWED = [_][]const u8{ "envelope", "oscillator", "random", "sink", "space", "time" };
+
 /// The tracer words — a host with a `World` registers these beside the
 /// core; a host without leaves a kernel that names one to refuse at mount.
 pub const TRACER = [_]rill.OpDef{
     .{
         .name = "collide",
+        .tags = &.{"surface"},
         .outputs = &.{
             .{ .name = "at", .ty = Tag.any },
             .{ .name = "normal", .ty = Tag.any },
@@ -639,6 +729,7 @@ pub const TRACER = [_]rill.OpDef{
     },
     .{
         .name = "ground",
+        .tags = &.{"surface"},
         .outputs = &.{
             .{ .name = "distance", .ty = Tag.number },
             .{ .name = "normal", .ty = Tag.any },
@@ -651,6 +742,7 @@ pub const TRACER = [_]rill.OpDef{
     },
     .{
         .name = "slide",
+        .tags = &.{ "surface", "motion" },
         .publishes = &.{"contact"},
         .inputs = &.{ .{ .name = "at", .ty = Tag.any }, .{ .name = "normal", .ty = Tag.any } },
         .help = "Row word: take the contact's normal out of the row's velocity and put the row on the surface — vel -= (n * vel) n, pos <- at. What is left is the tangent, so the row runs along what it hit. Subtracts rather than replaces, so gravity and the wind still compose. `collide | slide | stick`.",
@@ -661,6 +753,7 @@ pub const TRACER = [_]rill.OpDef{
     },
     .{
         .name = "stick",
+        .tags = &.{"surface"},
         .publishes = &.{"contact"},
         .inputs = &.{ .{ .name = "at", .ty = Tag.any }, .{ .name = "normal", .ty = Tag.any } },
         .help = "Row word: land the row — position the contact `at`, row.normal the contact normal, row.stuck set; the sweep holds it. `at` is the row's CENTRE at contact, one radius off the surface, because `collide` sweeps the row as a sphere of row.size — so the appearance draws a stuck row at `pos`, not at pos + normal × size. A stuck row still ages and reads its curves. `collide | stick` (the normal rides the pipe by name).",
@@ -681,6 +774,7 @@ pub fn registerTracer(reg: *rill.Registry) !void {
 pub const WORDS = [_]rill.OpDef{
     .{
         .name = "spawn",
+        .tags = &.{ "life", "motion", "random" },
         .help = "Row word: on a row's birth tick, launch it — vel ← the spray's aim × speed, ± spread per axis from the row's seed. Does nothing on later ticks.",
         .class = .reads,
         .routes = .anywhere,
@@ -689,6 +783,7 @@ pub const WORDS = [_]rill.OpDef{
     },
     .{
         .name = "gravity",
+        .tags = &.{"motion"},
         .inputs = &.{.{ .name = "g", .ty = Tag.number }},
         .help = "Row word: vel.y += g · dt, g in cells/s², negative down — `gravity -9.8`, or `gravity plane.drift.@self.gravity` from a knob.",
         .class = .reads,
@@ -698,6 +793,7 @@ pub const WORDS = [_]rill.OpDef{
     },
     .{
         .name = "perish",
+        .tags = &.{ "life", "time" },
         .help = "Row word: retire the row on the first tick its age has reached its life. A kernel without it has immortal rows.",
         .class = .reads,
         .routes = .anywhere,
@@ -706,6 +802,7 @@ pub const WORDS = [_]rill.OpDef{
     },
     .{
         .name = "relax",
+        .tags = &.{ "envelope", "time" },
         .inputs = &.{
             .{ .name = "in", .ty = Tag.number },
             .{ .name = "target", .ty = Tag.number },
@@ -720,6 +817,7 @@ pub const WORDS = [_]rill.OpDef{
     },
     .{
         .name = "near",
+        .tags = &.{ "neighbourhood", "space" },
         .inputs = &.{.{ .name = "radius", .ty = Tag.number }},
         .outputs = &.{.{ .name = "count", .ty = Tag.number }},
         .help = "Row word: how many live rows are within `radius` — and which ones, on the slate's handle lane under `crowd`, for `push` to read. Any positive radius is answerable; a wide one costs more cells, it does not miss rows.",
@@ -731,6 +829,7 @@ pub const WORDS = [_]rill.OpDef{
     },
     .{
         .name = "push",
+        .tags = &.{ "neighbourhood", "motion" },
         .inputs = &.{.{ .name = "k", .ty = Tag.number }},
         .help = "Row word: separation — lean away from everything `near` found, `vel += sum(pos - other) * k * dt`. Reads the list off the slate rather than gathering it again. Needs a `near` above it.",
         .class = .reads,
@@ -741,6 +840,7 @@ pub const WORDS = [_]rill.OpDef{
     },
     .{
         .name = "align",
+        .tags = &.{ "neighbourhood", "motion" },
         .inputs = &.{.{ .name = "k", .ty = Tag.number }},
         .help = "Row word: alignment — steer toward the MEAN velocity of the rows `near` found, `vel += (mean(other.vel) - vel) * k * dt`. The third of the flocking trio; separation is `push <k>` and cohesion is `push` with a NEGATIVE k, so a boid is `near` + those three. Neighbours' velocities come from the neighbourhood's snapshot. Needs a `near` above it.",
         .class = .reads,
@@ -751,6 +851,7 @@ pub const WORDS = [_]rill.OpDef{
     },
     .{
         .name = "sync",
+        .tags = &.{ "neighbourhood", "oscillator" },
         .statics = &.{.{ .name = "field", .kind = .path }},
         .inputs = &.{ .{ .name = "drift", .ty = Tag.number }, .{ .name = "couple", .ty = Tag.number } },
         .help = "Row word: a phase oscillator that listens to the rows `near` found — `phase += (drift + couple * mean(wrap(other - phase))) * dt`, wrapped into [0, 1). Only a user channel; neighbours' phases come from the neighbourhood's snapshot. Needs a `near` above it. `sync row.u0 row.u1 3`.",
@@ -762,6 +863,7 @@ pub const WORDS = [_]rill.OpDef{
     },
     .{
         .name = "infect",
+        .tags = &.{"neighbourhood"},
         .statics = &.{.{ .name = "field", .kind = .path }},
         .inputs = &.{.{ .name = "rate", .ty = Tag.number }},
         .help = "Row word: a channel SPREADS between neighbours — a row closes `rate * dt` of the gap to the highest value among the rows `near` found, and never goes down. The maximum and not the mean: a mean is diffusion and smears a peak, a maximum is transmission and makes a front. Recovery is `relax 0 <rate>` on the same channel, so an epidemic is two lines and the balance of the two rates is the threshold. Only a user channel; needs a `near` above it. `infect row.u0 3`.",
@@ -773,6 +875,7 @@ pub const WORDS = [_]rill.OpDef{
     },
     .{
         .name = "deposit",
+        .tags = &.{ "sink", "field" },
         .statics = &.{.{ .name = "channel", .kind = .channel }},
         .inputs = &.{.{ .name = "amount", .ty = Tag.number }},
         .help = "Row word: leave a MARK on a field channel at this row's position, as wide as this row's size — `deposit $soot 0.4`. Added and left to decay, never replaced, which is what makes it different from the spray's `casts` aggregate. Handed to the host serially after the sweep, in row id order. A row leaves one mark a tick and mount refuses a second `deposit`; a host with nowhere to put marks refuses by name.",
@@ -783,6 +886,7 @@ pub const WORDS = [_]rill.OpDef{
     },
     .{
         .name = "hear",
+        .tags = &.{"field"},
         .statics = &.{
             .{ .name = "channel", .kind = .channel },
             .{ .name = "grad", .kind = .word, .flag = true, .optional = true },
@@ -798,7 +902,16 @@ pub const WORDS = [_]rill.OpDef{
 };
 
 /// Register every spindrift word. Call after `rill.registerCore`.
+///
+/// The five minted sentences go in through the same door, and both TABLES
+/// are described here rather than in `registerTracer` because `surface` is
+/// carried only by the tracer words and a host with no `World` must still be
+/// able to read what the tag means. A tag rill later adopts under one of
+/// these five names refuses HERE, loudly, at startup — which is the answer
+/// `describeTag` was built to give, and better than two sentences racing to
+/// be the one a palette read last.
 pub fn register(reg: *rill.Registry) !void {
+    for (TAGS) |t| try reg.describeTag(t);
     for (WORDS) |def| _ = try reg.register(def);
 }
 

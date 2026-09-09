@@ -570,6 +570,12 @@ test "G2: every drift word is named in the manual, and every word the manual nam
         const rest = line[3..];
         const end = std.mem.indexOfAny(u8, rest, " `") orelse continue;
         const name = rest[0..end];
+        // A `#` row is the TAG tables (2026-09-09), not the word table. The
+        // sigil is the discriminator and it is a safe one: `register`
+        // refuses an operator whose name wears any of the store's four
+        // sigils, so no word can ever land in here wearing this one. Their
+        // own audit is the G22 manual gate below.
+        if (name[0] == '#') continue;
         if (reg.find(name) == null) {
             std.debug.print("docs/drift-words.md names '{s}', which is not registered\n", .{name});
             return error.TestUnexpectedResult;
@@ -577,6 +583,313 @@ test "G2: every drift word is named in the manual, and every word the manual nam
         rows += 1;
     }
     try testing.expectEqual(words.WORDS.len + words.TRACER.len, rows);
+}
+
+// ---------------------------------------------------------------------------
+// G22 — every row word says what it is FOR. rill's `OpDef.tags` landed
+// 2026-09-09 (rill `8e044ec`) with its 109 core words tagged and
+// spindrift's fifteen not, which `rill ops --tag untagged --host-row`
+// printed as a fifteen-line to-do list. These are the audits that close it,
+// in the shape of G2's: exhaustive over the table, both ways, so a
+// sixteenth word cannot slip through and a tag nothing carries cannot
+// linger.
+//
+// The tag rules are rill's and settled with Christian: the FIRST tag is the
+// home; a cross-cut earns its place by spanning homes; nothing enforced
+// becomes a tag.
+// ---------------------------------------------------------------------------
+
+/// Every row word, whichever door registers it. The audits are exhaustive
+/// over this and nothing else, so adding a word to either table adds it to
+/// all four gates.
+const ALL_WORDS = words.WORDS ++ words.TRACER;
+
+test "G22: every drift word carries a tag, and every tag it carries has a sentence" {
+    // Mutation: a typo'd tag — `"spce"` for `"space"` on `near`. Nothing
+    // describes it, so `tagDoc` answers null and this fires by name. Paid
+    // for by evidence rather than by imagination: Christian's own Blade3D
+    // has `Constraints` misspelled `Contraints` in an operator group,
+    // unnoticed for years, beside a `Physics` group declared twice.
+    // Mutation: drop `.tags` from any one word — it falls through to
+    // `UNTAGGED` at the registry's door, silently, because a tag is a
+    // display fact and rill defaults it rather than refusing. That default
+    // is why this gate is exhaustive over the table instead of trusting the
+    // register call to say no.
+    // Mutation: tag `infect` `"gate"`. rill DESCRIBES `gate`, so `tagDoc`
+    // answers and the typo mutation's branch is routed straight around;
+    // only the roster check bites, which is why the roster is checked at all
+    // and not left to the sentence. Spindrift has not decided to say `gate`,
+    // and a word that carries one nobody chose is how a vocabulary sprawls.
+    const gpa = testing.allocator;
+    var reg = try tracerRegistry(gpa);
+    defer reg.deinit();
+
+    for (ALL_WORDS) |word| {
+        const def = reg.get(reg.find(word.name).?);
+        if (def.tags.len == 0) {
+            std.debug.print("'{s}' carries no tags\n", .{def.name});
+            return error.TestUnexpectedResult;
+        }
+        for (def.tags) |t| {
+            if (std.mem.eql(u8, t, rill.registry.UNTAGGED)) {
+                std.debug.print("'{s}' is untagged — spindrift's table declares, it does not fall back\n", .{def.name});
+                return error.TestUnexpectedResult;
+            }
+            // The sentence, from whichever table owns it. A filter with no
+            // tooltip is the failure the `{name, doc}` pair exists to stop.
+            const doc = reg.tagDoc(t) orelse {
+                std.debug.print("'{s}' carries tag '{s}', which nobody has described\n", .{ def.name, t });
+                return error.TestUnexpectedResult;
+            };
+            try testing.expect(doc.len > 0);
+            // …and it is on one of the two rosters. `tagDoc` alone would let
+            // a tag rill happens to describe for its own reasons ride in
+            // here unnoticed; the rosters are what spindrift has actually
+            // decided to say.
+            const declared = for (words.TAGS) |g| {
+                if (std.mem.eql(u8, g.name, t)) break true;
+            } else for (words.BORROWED) |g| {
+                if (std.mem.eql(u8, g, t)) break true;
+            } else false;
+            if (!declared) {
+                std.debug.print("'{s}' carries tag '{s}', which is on neither roster\n", .{ def.name, t });
+                return error.TestUnexpectedResult;
+            }
+        }
+    }
+
+    // The other way, over both rosters: a tag emptied by a re-tagging is a
+    // heading a listing would never print and a filter a palette would offer
+    // that finds nothing.
+    for (words.TAGS) |g| try expectCarried(&reg, g.name);
+    for (words.BORROWED) |g| try expectCarried(&reg, g);
+
+    // The two rosters are DISJOINT and the borrowed six are rill's. Both
+    // halves matter. A minted name rill also declares would refuse at
+    // `describeTag` — loudly, at every host's startup — and this says which
+    // name did it instead of leaving `error.DuplicateTagDoc` to be read off
+    // a stack trace. A borrowed name rill RETIRES leaves spindrift carrying
+    // a tag with no sentence anywhere, which is the same `Contraints` in
+    // slow motion.
+    for (words.TAGS) |g| {
+        for (rill.ops.TAGS) |r| {
+            if (std.mem.eql(u8, g.name, r.name)) {
+                std.debug.print("'{s}' is minted here and rill declares it too — one tag, two sentences\n", .{g.name});
+                return error.TestUnexpectedResult;
+            }
+        }
+    }
+    for (words.BORROWED) |g| {
+        const in_rill = for (rill.ops.TAGS) |r| {
+            if (std.mem.eql(u8, g, r.name)) break true;
+        } else false;
+        if (!in_rill) {
+            std.debug.print("'{s}' is borrowed from rill and rill no longer declares it\n", .{g});
+            return error.TestUnexpectedResult;
+        }
+    }
+
+    // Sorted, both of them — a listing prints tags sorted and a reader
+    // comparing the two should not have to re-sort one. (rill's own roster
+    // gate, restated over these.)
+    for (words.TAGS[0 .. words.TAGS.len - 1], words.TAGS[1..]) |a, b| {
+        try testing.expect(std.mem.lessThan(u8, a.name, b.name));
+    }
+    for (words.BORROWED[0 .. words.BORROWED.len - 1], words.BORROWED[1..]) |a, b| {
+        try testing.expect(std.mem.lessThan(u8, a, b));
+    }
+}
+
+fn expectCarried(reg: *const rill.Registry, tag: []const u8) !void {
+    for (ALL_WORDS) |word| {
+        if (reg.get(reg.find(word.name).?).tagged(tag)) return;
+    }
+    std.debug.print("tag '{s}' is on a roster and no drift word carries it\n", .{tag});
+    return error.TestUnexpectedResult;
+}
+
+test "G22: the first tag is the home — declaration order, never alphabetical" {
+    // Mutation: sort a word's `.tags` list. That is the tidying edit that
+    // looks harmless — it compiles, every tag is still carried, every
+    // sentence still exists, and the gate above stays green — and it moves
+    // four words out of the group they belong to. `push` would file under
+    // `motion`, beside `gravity`, away from the `near` it cannot run
+    // without; `deposit` under `field`, away from the `cast` it is the row's
+    // copy of.
+    //
+    // Each fixture proves it WOULD have moved, so the gate cannot pass by
+    // accident on a word whose list happens to be alphabetical already —
+    // `spawn`, `near`, `sync`, `perish` and `relax` all are, and any of them
+    // would have made a decoration.
+    const gpa = testing.allocator;
+    var reg = try tracerRegistry(gpa);
+    defer reg.deinit();
+
+    try testing.expectEqualStrings("neighbourhood", reg.get(reg.find("push").?).home());
+    try testing.expect(std.mem.lessThan(u8, "motion", "neighbourhood"));
+    try testing.expectEqualStrings("neighbourhood", reg.get(reg.find("align").?).home());
+    try testing.expectEqualStrings("sink", reg.get(reg.find("deposit").?).home());
+    try testing.expect(std.mem.lessThan(u8, "field", "sink"));
+    try testing.expectEqualStrings("surface", reg.get(reg.find("slide").?).home());
+    try testing.expect(std.mem.lessThan(u8, "motion", "surface"));
+
+    // …and a word is found by every tag it carries, which is the whole
+    // model: `spawn` answers to `life`, to `motion` and to `random`.
+    const spawn = reg.get(reg.find("spawn").?);
+    try testing.expect(spawn.tagged("life") and spawn.tagged("motion") and spawn.tagged("random"));
+    try testing.expectEqualStrings("life", spawn.home());
+}
+
+test "G22: the manual's tag tables say what the registry says — the five sentences, and who is at home where" {
+    // A vocabulary document is one of the customers tags were built for, so
+    // `docs/drift-words.md` carries the tables — and a manual nothing
+    // executes drifts until it contradicts a gate you already have (rill's
+    // precedent, and G2's own reason for counting the word table both ways).
+    //
+    // Mutation: change one word of a sentence in the manual and leave
+    // `words.TAGS` alone — the row is rebuilt from the table here and
+    // compared verbatim, so the halves cannot disagree.
+    // Mutation: re-tag a word and leave the manual — its name moves out of
+    // one "at home" cell and the rebuilt row stops matching. That is the
+    // half a hand-written doc always loses.
+    // Mutation: add a sixth row to the manual's minted table — the count
+    // below refuses it, because a tag the registry has never heard of is a
+    // palette filter that finds nothing.
+    const doc = @embedFile("drift-words.md");
+    const gpa = testing.allocator;
+    var reg = try tracerRegistry(gpa);
+    defer reg.deinit();
+
+    var line: std.ArrayListUnmanaged(u8) = .empty;
+    defer line.deinit(gpa);
+    for (words.TAGS) |g| {
+        line.clearRetainingCapacity();
+        try line.writer(gpa).print("| `#{s}` | {s} | ", .{ g.name, g.doc });
+        try appendWordCells(gpa, &line, &reg, g.name, .home);
+        try line.appendSlice(gpa, " |\n");
+        if (std.mem.indexOf(u8, doc, line.items) == null) {
+            std.debug.print("the manual has no such row:\n{s}", .{line.items});
+            return error.TestUnexpectedResult;
+        }
+    }
+    // The borrowed six: carried-by, then at-home (an em dash where a tag is
+    // only ever a way of being found here).
+    for (words.BORROWED) |g| {
+        line.clearRetainingCapacity();
+        try line.writer(gpa).print("| `#{s}` | ", .{g});
+        try appendWordCells(gpa, &line, &reg, g, .carried);
+        try line.appendSlice(gpa, " | ");
+        try appendWordCells(gpa, &line, &reg, g, .home);
+        try line.appendSlice(gpa, " |\n");
+        if (std.mem.indexOf(u8, doc, line.items) == null) {
+            std.debug.print("the manual has no such row:\n{s}", .{line.items});
+            return error.TestUnexpectedResult;
+        }
+    }
+    // …and the manual names no tag the registry has not got. Counted off the
+    // `#` sigil, which `register` refuses on an operator name, so a word row
+    // can never be miscounted as a tag row.
+    var rows: usize = 0;
+    var lines = std.mem.splitScalar(u8, doc, '\n');
+    while (lines.next()) |l| {
+        if (std.mem.startsWith(u8, l, "| `#")) rows += 1;
+    }
+    try testing.expectEqual(words.TAGS.len + words.BORROWED.len, rows);
+}
+
+/// The manual's word cells for one tag: every word carrying it, or only the
+/// ones at HOME under it, alphabetical, as `` `a`, `b` `` — and an em dash
+/// when there are none, because an empty markdown cell reads as an omission.
+fn appendWordCells(
+    gpa: std.mem.Allocator,
+    out: *std.ArrayListUnmanaged(u8),
+    reg: *const rill.Registry,
+    tag: []const u8,
+    which: enum { home, carried },
+) !void {
+    var names: [ALL_WORDS.len][]const u8 = undefined;
+    var n: usize = 0;
+    for (ALL_WORDS) |word| {
+        const def = reg.get(reg.find(word.name).?);
+        const hit = switch (which) {
+            .home => std.mem.eql(u8, def.home(), tag),
+            .carried => def.tagged(tag),
+        };
+        if (hit) {
+            names[n] = def.name;
+            n += 1;
+        }
+    }
+    std.mem.sort([]const u8, names[0..n], {}, struct {
+        fn less(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.less);
+    if (n == 0) return out.appendSlice(gpa, "—");
+    for (names[0..n], 0..) |name, i| {
+        if (i > 0) try out.appendSlice(gpa, ", ");
+        try out.writer(gpa).print("`{s}`", .{name});
+    }
+}
+
+test "G22: the cross-cutting tags cut across, measured over rill's table and spindrift's together" {
+    // Mutation: drop `field` from `deposit`. One character short of nothing,
+    // and it turns a cross-cut into a sub-name for `hear` — the tag would
+    // then be carried only by words at home under `field`, which is a
+    // narrowing that should have been prose in `field`'s own sentence
+    // instead. Watched here rather than asserted from the table being
+    // audited: the homes are COUNTED off the registry.
+    //
+    // Measured over core + spindrift because that is the registry a host
+    // actually holds, and because four of these six span into rill's own
+    // homes — `space` reaches `near` from `within`, `random` reaches `spawn`
+    // from `noise`. A gate over spindrift's fifteen alone would have called
+    // those single-home and been wrong about the thing it was auditing.
+    const gpa = testing.allocator;
+    var reg = try tracerRegistry(gpa);
+    defer reg.deinit();
+
+    for ([_][]const u8{ "field", "motion", "oscillator", "random", "space", "time" }) |cross| {
+        var homes: usize = 0;
+        var seen: [8][]const u8 = undefined;
+        for (reg.ops.items) |def| {
+            if (!def.tagged(cross)) continue;
+            const known = for (seen[0..homes]) |h| {
+                if (std.mem.eql(u8, h, def.home())) break true;
+            } else false;
+            if (!known and homes < seen.len) {
+                seen[homes] = def.home();
+                homes += 1;
+            }
+        }
+        if (homes < 2) {
+            std.debug.print("'{s}' is carried only by words at home in one place — it is a sub-name, not a cross-cut\n", .{cross});
+            return error.TestUnexpectedResult;
+        }
+    }
+
+    // The other three minted tags claim nothing of the sort and are pinned
+    // as HOMES, rill's `constant` precedent: everything carrying them is at
+    // home under them, so the loop above must never be relaxed to admit
+    // them. If one of these ever spans, that is a finding about the word
+    // that moved, not a licence to widen the roster.
+    for ([_][]const u8{ "life", "neighbourhood", "surface" }) |home_only| {
+        for (reg.ops.items) |def| {
+            if (def.tagged(home_only) and !std.mem.eql(u8, def.home(), home_only)) {
+                std.debug.print("'{s}' carries '{s}' and is at home in '{s}' — the tag has become a cross-cut and is not gated as one\n", .{ def.name, home_only, def.home() });
+                return error.TestUnexpectedResult;
+            }
+        }
+    }
+
+    // `envelope` and `sink` are borrowed HOMES rather than cross-cuts:
+    // `relax` sits beside `ease` and `deposit` beside `cast`, which is the
+    // point of borrowing them. Pinned so nobody adds them to the cross-cut
+    // roster above, where they would pass for the wrong reason — rill's own
+    // words already spread them across one home each.
+    try testing.expectEqualStrings("envelope", reg.get(reg.find("relax").?).home());
+    try testing.expectEqualStrings("envelope", reg.get(reg.find("ease").?).home());
+    try testing.expectEqualStrings("sink", reg.get(reg.find("cast").?).home());
 }
 
 // ---------------------------------------------------------------------------
