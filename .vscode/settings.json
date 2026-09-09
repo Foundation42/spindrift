@@ -1,0 +1,19 @@
+{
+  // Every kernel here is a ROW program: `spawn`, `near`, `push`, `perish` and
+  // eleven more are spindrift's words, injected into rill's registry by this
+  // host at startup. rill core has never heard of them and refuses them by
+  // name, which is correct of it and useless here — without `--host-row` the
+  // checker squiggles `spawn` on every kernel in kernels/, and the FORMATTER
+  // refuses the same files outright (it must parse before it can print, and
+  // it exits 65 with empty stdout rather than write half a program).
+  //
+  // So both calls carry the flag. Set 2026-09-09, after Format Document did
+  // nothing to kernels/roaches.rill and said so only in the status bar.
+  "rill.format.args": ["fmt", "--host-row", "-"],
+  "rill.diagnostics.args": ["check", "--json", "--host-row", "-"],
+
+  // With the host's vocabulary named above, an unknown name really is a
+  // mistake — so stop downgrading it. The extension defaults this to
+  // `warning` precisely because it cannot assume the flag is set.
+  "rill.diagnostics.unknownNames": "error"
+}
