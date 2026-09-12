@@ -1,12 +1,32 @@
-// smoke — the second kernel: fields in.
+// smoke — the second kernel: fields IN. A plume that leans away from a wind.
+//
+// ⚠ Nothing in this file makes anything look like smoke — no size growth, no
+// opacity ramp, no thinning. This is `embers.rill` plus a lean, and the LOOK
+// is the spray's appearance. What it demonstrates is a kernel reading a FIELD
+// that another caster writes.
 //
 // The spray's ^ declares `samples $wind cell 0.5`; every tick the wind's
 // deposit bag is rasterised onto a lattice over the spray's bounds, and
-// `$wind grad at row.pos` reads the gradient there — toward the wind's
-// source. A negative `lean` pushes the smoke away from it, so the column
-// leans downwind and straightens when the caster is unmounted and its
-// deposit has decayed. The cast the other way — `casts $dankness` — is
-// declared on the ^spray too: one aggregate per tick, not a row's business.
+// `$wind grad at row.pos` reads the gradient there — pointing TOWARD the
+// wind's source. So `lean` must be NEGATIVE to push the column downwind; a
+// positive one sucks it into the fan. The column straightens when the caster
+// is unmounted and its deposit has decayed.
+//
+// The cast the other way — `casts $dankness` — is declared on the ^spray too:
+// one aggregate per tick, not a row's business.
+//
+// Every `plane.drift.@self.k.<name>` below is a KNOB, not a value: this file
+// says what to turn and the number itself is seeded from outside. `drift-run`
+// seeds only `gravity`; everything else needs a `--seed` of its own, and a
+// knob that never arrives is REFUSED BY NAME at the row rather than read as
+// zero. So:
+//
+//   drift-run --kernel kernels/smoke.rill \\
+//       --seed plane.drift.@em.k.gravity =<cells/s²>
+//       --seed plane.drift.@em.k.lean    =<NEGATIVE — downwind>
+//
+// Units: `row.size` is a RADIUS in cells, `gravity` is cells/s² on y and
+// NEGATIVE is down (a positive pull lifts).
 spawn
 gravity plane.drift.@self.k.gravity
 $wind grad at row.pos | mul plane.drift.@self.k.lean | write row.vel add

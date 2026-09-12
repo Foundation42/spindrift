@@ -1,20 +1,48 @@
-// boids — the flocking trio, and a demonstration that it is three lines and
-// one new word.
+// boids — the flocking trio: THREE BEHAVIOURS, five statements, one new word.
 //
-// Separation is `push` with a positive gain. Cohesion is the SAME WORD with
-// a negative one — the arithmetic is identical and only the direction
-// differs, which is why `push` has no sign guard. Alignment needed the
-// neighbourhood to carry velocity, and that is all `align` is.
+// Separation is `push` with a positive gain. Cohesion is the SAME WORD with a
+// negative one — the arithmetic is identical and only the direction differs,
+// which is why `push` has no sign guard. Alignment needed the neighbourhood to
+// carry velocity, and that is all `align` is.
 //
 // The two radii are the point. A single `near` gives one ring, and a flock
-// wants two: a tight one it will not crowd into and a wide one it belongs
-// to. Two `near` lines do it, because a `push` or an `align` reads whichever
+// wants two: a tight one it will not crowd into and a wide one it belongs to.
+// Two `near` lines do it, because a `push` or an `align` reads whichever
 // `near` is nearest ABOVE it — the slate's own rule, doing a job nobody
-// designed it for.
+// designed it for. ⚠ SO LINE ORDER IS BEHAVIOUR HERE: `align` at the bottom is
+// bound to the WIDE ring, and inserting a `near` between them re-binds it
+// silently.
 //
-//   row.u3  the tight crowd  (a readout)
-//   row.u2  the wide crowd   (a readout — and what a colour can read)
-
+// ⚠ `k.flock` MUST BE NEGATIVE to cohere. Drive it positive from a rill and
+// the flock SCATTERS — one number, and no part of this file has to know it
+// moved. The knob called `flock` does the opposite of its name above zero.
+//
+// ⚠ `push` SUMS over the neighbourhood, so every gain here is PER NEIGHBOUR
+// and the force grows with the crowd, saturating at the 64-neighbour cap.
+// Widening a ring therefore multiplies its gain as well as enlarging it: take
+// the gain DOWN by roughly the ratio of the two crowd counts.
+//
+//   row.u3  the tight crowd  (written for a reader; nothing here consumes it)
+//   row.u2  the wide crowd   (the same — and what a colour could read)
+//
+// There is no gravity, no drag and no bounds: rows coast wherever `spawn`
+// threw them, flocking as they go, until `perish`.
+//
+// Every `plane.drift.@self.k.<name>` below is a KNOB, not a value: this file
+// says what to turn and the number itself is seeded from outside. `drift-run`
+// seeds only `gravity`; everything else needs a `--seed` of its own, and a
+// knob that never arrives is REFUSED BY NAME at the row rather than read as
+// zero. So:
+//
+//   drift-run --kernel kernels/boids.rill \\
+//       --seed plane.drift.@em.k.near    =<tight radius, cells>
+//       --seed plane.drift.@em.k.shove   =<separation gain>
+//       --seed plane.drift.@em.k.far     =<wide radius, cells>
+//       --seed plane.drift.@em.k.flock   =<cohesion gain, NEGATIVE>
+//       --seed plane.drift.@em.k.match   =<alignment gain>
+//
+// Units: `row.size` is a RADIUS in cells, `gravity` is cells/s² on y and
+// NEGATIVE is down (a positive pull lifts).
 spawn
 perish
 

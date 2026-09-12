@@ -15,15 +15,42 @@
 // by hand, which is exactly why `infect` does not own it — recovery is a
 // separate fact and `relax` was already the word for it.
 //
+// ⚠ `heal` is named for the epidemic and reads BACKWARDS for an artist: it is
+// the knob that makes the light GO OUT.
+//
+// ⚠ NOT the same file as matryoshka's `kernels/kindle.rill`, which is this
+// kernel plus a colour curve. If you were told "tune kindle", check which repo
+// you opened.
+//
 //   row.u0  lit     0 dark → 1 alight. This is what a renderer reads.
-//   row.u1  source  1 for the few rows that are never out, else 0
-//   row.u3  crowd   how many are in reach (a readout)
+//   row.u1  source  approaching 1 for the few rows that are never out, else 0.
+//                   Never exactly 1 — see the line that writes it.
+//   row.u3  crowd   how many are in reach — written for a reader, nothing here
+//                   consumes it
+//
+// Every `plane.drift.@self.k.<name>` below is a KNOB, not a value: this file
+// says what to turn and the number itself is seeded from outside. `drift-run`
+// seeds only `gravity`, so each of these needs a `--seed` of its own, and a
+// knob that never arrives is REFUSED BY NAME at the row rather than read as
+// zero:
+//
+//   drift-run --kernel kernels/kindle.rill \\
+//       --seed plane.drift.@em.k.reach =<radius, cells>
+//       --seed plane.drift.@em.k.spread=<per s, toward the brightest neighbour>
+//       --seed plane.drift.@em.k.heal  =<per s, back toward dark>
+//       --seed plane.drift.@em.k.stoke =<per s, a source relighting itself>
+//
+// ⚠ A `relax` RATE has a ceiling: a step that would close more than the whole
+// gap is refused, so any rate above 1/dt refuses rather than clamping.
 
 spawn
 perish
 
-// The sources: `row.seed` is a per-row uniform in [0, 1), so this lights the
-// top ~1.7% of them and leaves a soft edge rather than a hard set.
+// The sources: `row.seed` is a per-row uniform in [0, 1), so `mul n | sub n-1`
+// keeps the top 1/n of them — here 1/60, about 1.7% — and `clamp` floors the
+// rest at zero. The rule is the PAIR: to light 5% instead, write
+// `mul 20 | sub 19`. It leaves a soft edge rather than a hard set, which is
+// why `row.u1` approaches 1 without reaching it.
 row.seed | mul 60 | sub 59 | clamp 0 1 | write row.u1
 
 // Who is close, and catch it from whoever among them has most.

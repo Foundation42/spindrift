@@ -1,15 +1,38 @@
 // soot — funideas §8, the smallest true version of it: a fire that leaves a
 // stain where it lands, and nobody wrote a "make this floor sooty" system.
 //
+// Rows arc down, hit something, stop dead where they land, and each landing
+// smears a mark into the `$soot` channel. The marks accumulate where embers
+// keep falling and fade on the channel's own clock.
+//
+// ⚠ The thing you would actually LOOK at is the stain, and this file does not
+// render it — whoever consumes `$soot` does. The rows themselves have no look
+// of their own here.
+//
 // `row.stuck` is 1 for a landed row and 0 for one still in the air, so the
 // amount IS the condition — an airborne row asks for nothing and nothing is
-// what it leaves. The mark is as wide as the ember, decays on the channel's
-// own clock, and accumulates where the embers keep landing.
+// what it leaves. The mark is as wide as the ember.
 //
-// The spray's `casts` could not do this. A cast is one aggregate at the
-// centre of the cloud, restated every tick; this is many marks, where the
-// rows actually were, that outlive the rows that made them.
-
+// The spray's `casts` could not do this. A cast is one aggregate at the centre
+// of the cloud, restated every tick; this is many marks, where the rows
+// actually were, that outlive the rows that made them.
+//
+// Every `plane.drift.@self.k.<name>` below is a KNOB, not a value: this file
+// says what to turn and the number itself is seeded from outside. `drift-run`
+// seeds only `gravity`; everything else needs a `--seed` of its own, and a
+// knob that never arrives is REFUSED BY NAME at the row rather than read as
+// zero. So:
+//
+//   drift-run --kernel kernels/soot.rill \\
+//       --seed plane.drift.@em.k.gravity =<cells/s²>
+//       --seed plane.drift.@em.k.stain   =<per landing>
+//
+// Units: `row.size` is a RADIUS in cells, `gravity` is cells/s² on y and
+// NEGATIVE is down (a positive pull lifts).
+//
+// Turning it:
+//   `mul 0.05 | add 0.05`  the mark's width in cells: 0.05 to 0.10. It is the
+//                          row's RADIUS, so it sets the collision size too.
 spawn
 gravity plane.drift.@self.k.gravity
 collide | stick

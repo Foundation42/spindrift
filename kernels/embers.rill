@@ -1,11 +1,33 @@
 // embers — the first kernel: a rill mounted on a spray.
 //
-// Every line is an independent flow over the row. `spawn` launches a
-// newborn along the spray's aim at the spray's speed; `gravity` bends every
-// row's velocity by the spray's own knob, a broadcast — write
-// plane.drift.@<name>.gravity from any rill and every row feels it next
-// tick; `perish` retires a row when its age reaches its life. Integration
-// is not a word: a velocity moves its position.
+// A fountain of rows thrown along the spray's aim, arcing under gravity,
+// retired when they run out of life. That is the whole file, and it is
+// deliberately the whole file: this is the smallest thing that is a kernel.
+//
+// ⚠ There is no LOOK here — no colour, no size, no fade. What makes these
+// read as embers is the spray's appearance, declared where the spray is,
+// not here. Read as a behaviour, this is equally rain or confetti.
+//
+// Every line is an independent flow over the row. `spawn` launches a newborn
+// along the spray's aim at the spray's speed; `gravity` bends every row's
+// velocity by a broadcast knob, so a rill writing that path retunes every row
+// next tick; `perish` retires a row when its age reaches its life.
+// Integration is not a word: a velocity moves its position.
+//
+// Every `plane.drift.@self.k.<name>` below is a KNOB, not a value: this file
+// says what to turn and the number itself is seeded from outside. `drift-run`
+// seeds only `gravity`; everything else needs a `--seed` of its own, and a
+// knob that never arrives is REFUSED BY NAME at the row rather than read as
+// zero. So:
+//
+//   drift-run --kernel kernels/embers.rill \\
+//       --seed plane.drift.@em.k.gravity =<cells/s²>
+//
+// Units: `row.size` is a RADIUS in cells, `gravity` is cells/s² on y and
+// NEGATIVE is down (a positive pull lifts).
+//
+// `life`, `rate`, `speed` and `spread` are the SPRAY's, not this file's —
+// every "make them last longer / denser / faster / wider" note lands there.
 spawn
 gravity plane.drift.@self.k.gravity
 perish

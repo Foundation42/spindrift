@@ -2317,3 +2317,86 @@ from the PORT name, so `:push_k` became `:push_gain` and `:align_k` became
 `:align_gain`. That coupling is the feature — the socket a reader sees is named
 after the thing it fills — and the gates tracking it is what a derived name
 should cost.
+
+## 2026-09-12 — the kernel corpus, read by someone with no priors
+
+Same instrument as matryoshka's pass: a reader told they were a TA who joined
+yesterday, given the eight `.rill` files and `drift-words.md` and forbidden the
+source, these notes and the sibling repo. Asked what they could NOT work out.
+The edits are mine, from the report.
+
+### The headline, and it is structural
+
+> **Six of these eight files contain no number an artist can turn.**
+
+`boids`, `embers`, `smoke` and `motes` have zero numeric literals; `fire` and
+`hearth` have only the `0`/`1` targets `relax` requires. Every value lives
+behind a `plane.drift.@self.k.<name>` path — and **`drift-run` seeds only
+`gravity`**. Everything else needs a `--seed` of its own, and no invocation
+that supplies them exists anywhere in the repo.
+
+So every file now lists what it reads, with a unit and a meaning per knob, as a
+`drift-run` line you can complete. No values were invented: there are none to
+copy, and making some up for somebody else's effects is not documentation.
+
+### What it caught
+
+**`embers.rill` documents an ILLEGAL path**, in the first file a newcomer
+reads: *"write plane.drift.@&lt;name&gt;.gravity from any rill"*. Flat `gravity`
+under a spray's `@name` is refused at mount — and `drift-words.md` uses that
+exact knob as its worked example of the bug the `.k.` room was created to fix.
+The code on the next line is correct. **`run.zig`'s own `--gravity` help said
+the same flat path in two places**, while its example three lines later used
+`.k.`. The code seeds `.k.gravity`; both docs were stale.
+
+**`fire.rill` carries a fossil.** It warns at length that the knob is `thin` and
+not `spread` because *"a kernel's knobs and the SPRAY's own knobs share one
+namespace"* — a collision the `.k.` room ended. `@self.k.spread` and
+`@self.spread` are different paths now, and `kindle.rill` uses the former with
+no ill effect. The comment warned a reader off a name that is safe and stated a
+rule that is false. Kept as history, rewritten as history.
+
+**`hearth.rill` says "one difference" from `fire.rill` and there are two.** The
+third cooling line — `relax 1 k.chill | mul row.u2`, faster once the ember is
+thin enough for the air to get at it — is absent from hearth entirely. The
+comment told a reader not to look for it, and the reader only found it because
+they were asked to check counts. Now stated, with what it means for the effect.
+
+**`boids.rill` says "three lines" of a body that is five statements.** Three
+BEHAVIOURS, and it says so now.
+
+**`kindle.rill`'s legend claimed `row.u1` is "1 for the few"** — but
+`seed·60 − 59 < 1` always, since seed is `[0, 1)`. It approaches 1 and never
+reaches. And the `60`/`59` pair had its OUTCOME documented (~1.7%, which checks
+out) and never its RULE: it is `mul n | sub n-1`, so 5% is `mul 20 | sub 19`.
+
+### The two traps neither file mentioned, now in both
+
+`relax` refuses a rate whose step would close more than the whole gap — so
+anything above 1/dt refuses rather than clamping: above 60 at 60 Hz, above 10
+on a 100 ms headless tick. "Snuff it instantly" is not a big number, it is a
+refusal. And `push` SUMS over the neighbourhood, so widening a ring multiplies
+its gain as well as enlarging it.
+
+### And three names that lie
+
+`k.flock` must be NEGATIVE to cohere; positive scatters. `k.lean` must be
+NEGATIVE to blow downwind; positive sucks the plume into the fan. `k.heal` is
+the knob that makes the light go OUT. All three are named for the mechanism and
+read backwards to a reader at the obvious default of a positive number. Each
+now says so in ⚠ at the top of its file.
+
+### Cross-repo: one name, two different effects
+
+`motes` is bioluminescent entrainment here and DUST IN A SUN SHAFT in
+matryoshka — whose entrainment kernel is called `fireflies.rill`. `kindle` is
+this file plus a colour curve there; `smoke` is a wind-lean demo here and a
+grey plume there. Each of the three now says which it is and that the other
+exists, because "tune kindle" is ambiguous across two open repos.
+
+### Measured
+
+Suite green — and the gates MOUNT the four embedded kernels (`embers`, `smoke`,
+`fire`, `hearth`), so the suite is the mount check. 295 insertions, 64
+deletions, **zero numbers moved** (`numcheck.py`, the same instrument as
+matryoshka's pass). Every kernel still parses and is a printer fixed point.

@@ -1,16 +1,58 @@
-// hearth — the slope's ember. It lands on something tilted and RUNS DOWN
-// it, quenching the whole way; `fire.rill`'s ember lands on something flat
-// and stops. Same three manifold axes, same relax shape, one difference:
-// what tells the kernel it is against the cold thing.
+// hearth — the slope's ember: it lands on something TILTED and runs down it,
+// quenching the whole way, so you get a streak rather than a dot.
+// `fire.rill`'s ember lands on something flat and stops.
+//
+// ⚠ "hearth" here means a tilted surface, not a fireplace.
+//
+// ⚠ Same three manifold axes as `fire.rill` and the same look lives with the
+// spray, not here — see that file's header for what a manifold is.
+//
+//   row.u0  cooled   0 white-hot ... 1 cold
+//   row.u1  sooted   0 clean ....... 1 all carbon
+//   row.u2  thinned  0 dense ....... 1 blown thin
+//
+// TWO differences from `fire.rill`, not one:
+//
+//   1. What tells the kernel it is against the cold thing (below).
+//   2. There is no `chill` term. `fire.rill` has a third cooling line —
+//      `relax 1 k.chill | mul row.u2`, faster once the ember is thin enough
+//      for the air to get at it — and this file does not. A hearth ember
+//      therefore cools on two influences where a fire ember cools on three.
 //
 // A sliding row NEVER sets `row.stuck` — that is what `stuck` means, and a
 // running ember is not held. So the condition "I am against a surface right
-// now" has nowhere in the row to live: `slide` could write a field, but
-// rill lands a row's writes only after the whole node loop, so the lines
-// below would read it a tick late, and a value that crosses a tick boundary
-// is state owing a dump and a format version. `slate.contact` crosses
-// nothing. `slide` says it; these lines read it; the next row starts blank.
-
+// now" has nowhere in the row to live: `slide` could write a field, but rill
+// lands a row's writes only after the whole node loop, so the lines below
+// would read it a tick late, and a value that crosses a tick boundary is
+// state owing a dump and a format version. `slate.contact` crosses nothing.
+// `slide` says it; these lines read it; the next row starts blank. It is 1 on
+// a tick the row is against the surface and 0 otherwise, so `mul
+// slate.contact` reads as "this line, but only while touching".
+//
+// Every `plane.drift.@self.k.<name>` below is a KNOB, not a value: this file
+// says what to turn and the number itself is seeded from outside. `drift-run`
+// seeds only `gravity`; everything else needs a `--seed` of its own, and a
+// knob that never arrives is REFUSED BY NAME at the row rather than read as
+// zero. So:
+//
+//   drift-run --kernel kernels/hearth.rill \\
+//       --seed plane.drift.@em.k.gravity =<cells/s²>
+//       --seed plane.drift.@em.k.cool    =<per s, in air>
+//       --seed plane.drift.@em.k.plunge  =<per s, on contact>
+//       --seed plane.drift.@em.k.smoke   =<per s, carbon in flight>
+//       --seed plane.drift.@em.k.quench  =<per s, carbon dumped on landing>
+//       --seed plane.drift.@em.k.thin    =<per s, spreading>
+//       --seed plane.drift.@em.k.settle  =<per s, pulled back dense>
+//       --seed plane.drift.@em.k.puff    =<extra radius when thin>
+//       --seed plane.drift.@em.k.grain   =<base radius, cells>
+//
+// ⚠ A `relax` RATE has a ceiling: a step that would close more than the whole
+// gap is refused, so any rate above 1/dt refuses rather than clamping — above
+// 60 at 60 Hz, above 10 on a 100 ms headless tick. "Snuff it instantly" is not
+// a big number here; it is a refusal.
+//
+// Units: `row.size` is a RADIUS in cells, `gravity` is cells/s² on y and
+// NEGATIVE is down (a positive pull lifts).
 spawn
 gravity plane.drift.@self.k.gravity
 collide | slide

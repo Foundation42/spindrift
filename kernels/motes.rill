@@ -1,16 +1,50 @@
-// motes — bioluminescent particles that entrain. funideas §6's
-// `synchronise`, and the thing it promises: "thousands of bioluminescent
-// particles whose emission phases gradually synchronise locally. You'd get
-// travelling waves of light emerging almost accidentally."
+// motes — bioluminescent particles that entrain. funideas §6's `synchronise`,
+// and the thing it promises: "thousands of bioluminescent particles whose
+// emission phases gradually synchronise locally. You'd get travelling waves of
+// light emerging almost accidentally."
+//
+// ⚠ NOT the same effect as matryoshka's `kernels/motes.rill`, which is dust in
+// a sun shaft. That repo's entrainment kernel is called `fireflies.rill`. Same
+// filename, different effects — check which repo you opened.
+//
+// A cloud of blinking specks whose blink rate rises across x, so one end runs
+// faster than the other, each with a random offset on top. Each pulls gently
+// on whoever is in reach, so local patches fall into step and bands of
+// synchronised blinking drift across the cloud.
 //
 // Nothing here makes a wave. Every row is a lone oscillator with its own
 // natural frequency and a whisper of coupling to whatever is within reach.
 // The wave is what a FIELD of them does.
 //
+// ⚠ What a phase LOOKS like is not this file's business: `row.u0` is a number
+// in [0, 1) and the spray's appearance decides whether that reads as a hard
+// blink, a ramp or a glow.
+//
 //   row.u0  phase    [0, 1), what the renderer lights
-//   row.u1  drift    this row's own frequency, cycles a second
-//   row.u3  crowd    how many rows are in reach (a diagnostic)
-
+//   row.u1  drift    this row's own frequency, cycles a second. (Nothing to do
+//                    with `plane.drift`, which is the path head every kernel
+//                    reads its knobs from, or with drift-run.)
+//   row.u3  crowd    how many rows are in reach — written for a reader,
+//                    nothing here consumes it
+//
+// `near` leaves the list `sync` reads, so the ORDER of the last two lines
+// matters: move the `near` and the coupling stops.
+//
+// Every `plane.drift.@self.k.<name>` below is a KNOB, not a value: this file
+// says what to turn and the number itself is seeded from outside. `drift-run`
+// seeds only `gravity`; everything else needs a `--seed` of its own, and a
+// knob that never arrives is REFUSED BY NAME at the row rather than read as
+// zero. So:
+//
+//   drift-run --kernel kernels/motes.rill \\
+//       --seed plane.drift.@em.k.slope   =<Hz per cell of x>
+//       --seed plane.drift.@em.k.base    =<Hz at x = 0>
+//       --seed plane.drift.@em.k.jitter  =<Hz, per-row spread>
+//       --seed plane.drift.@em.k.reach   =<radius, cells>
+//       --seed plane.drift.@em.k.couple  =<how hard neighbours pull>
+//
+// Units: `row.size` is a RADIUS in cells, `gravity` is cells/s² on y and
+// NEGATIVE is down (a positive pull lifts).
 spawn
 perish
 

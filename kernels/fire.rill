@@ -1,16 +1,50 @@
 // fire — the first kernel whose appearance is not a curve over age.
 //
-// It writes no colour. It writes a POSITION IN AN APPEARANCE MANIFOLD:
-// three state channels the renderer reads an RBF set at (funideas §9).
-// Age is still in here — it is what `perish` reads — but nothing about
-// how the row LOOKS comes from it. What the row looks like is wherever
-// its state got to, and the state is pushed around by the world.
+// An ember cools, soots up and blows thin as it flies, getting wider as it
+// thins; when it lands it cools fast, dumps its carbon, and is squeezed back
+// toward dense so it reads as a mark rather than a puff.
+//
+// ⚠ WHAT THAT LOOKS LIKE IS NOT IN THIS FILE. It writes no colour: it writes a
+// POSITION IN AN APPEARANCE MANIFOLD — three state channels the renderer reads
+// an RBF set at (funideas §9) — and the set named `"fire"` lives with the
+// spray, not here. Whether this reads as a campfire or a welding spark is
+// decided there.
+//
+// Age is still in here — it is what `perish` reads — but nothing about how the
+// row LOOKS comes from it. What the row looks like is wherever its state got
+// to, and the state is pushed around by the world.
 //
 //   row.u0  cooled   0 white-hot ... 1 cold
 //   row.u1  sooted   0 clean ....... 1 all carbon
 //   row.u2  thinned  0 dense ....... 1 blown thin
 //
-// All three are born at ZERO, which is not a coincidence: a spawn
+// All three are born at ZERO, which is not a coincidence: a //
+// Every `plane.drift.@self.k.<name>` below is a KNOB, not a value: this file
+// says what to turn and the number itself is seeded from outside. `drift-run`
+// seeds only `gravity`; everything else needs a `--seed` of its own, and a
+// knob that never arrives is REFUSED BY NAME at the row rather than read as
+// zero. So:
+//
+//   drift-run --kernel kernels/fire.rill \\
+//       --seed plane.drift.@em.k.gravity =<cells/s²>
+//       --seed plane.drift.@em.k.cool    =<per s, in air>
+//       --seed plane.drift.@em.k.plunge  =<per s, on contact>
+//       --seed plane.drift.@em.k.chill   =<per s, once thin>
+//       --seed plane.drift.@em.k.smoke   =<per s, carbon in flight>
+//       --seed plane.drift.@em.k.quench  =<per s, carbon dumped on landing>
+//       --seed plane.drift.@em.k.thin    =<per s, spreading>
+//       --seed plane.drift.@em.k.settle  =<per s, pulled back dense>
+//       --seed plane.drift.@em.k.puff    =<extra radius when thin>
+//       --seed plane.drift.@em.k.grain   =<base radius, cells>
+//
+// ⚠ A `relax` RATE has a ceiling: a step that would close more than the whole
+// gap is refused, so any rate above 1/dt refuses rather than clamping — above
+// 60 at 60 Hz, above 10 on a 100 ms headless tick. "Snuff it instantly" is not
+// a big number here; it is a refusal.
+//
+// Units: `row.size` is a RADIUS in cells, `gravity` is cells/s² on y and
+// NEGATIVE is down (a positive pull lifts).
+spawn
 // zeroes a row's user channels, so the axes are spelled as how much has
 // HAPPENED to the row, never as what it has left. A newborn has no
 // history, and (0, 0, 0) is the flame.
@@ -47,11 +81,12 @@ row.u1 | relax 1 plane.drift.@self.k.smoke | write row.u1 add
 row.u1 | relax 1 plane.drift.@self.k.quench | mul row.stuck | write row.u1 add
 
 // -- thinned -----------------------------------------------------------
-// It spreads as it goes. (The knob is `thin`, not `spread`: a kernel's
-// knobs and the SPRAY's own knobs share one namespace, so naming this
-// one `spread` silently retuned the launch cone to 0.013 cells/s — the
-// mount line still printed the 1.6 the flag asked for, and every row
-// went straight up in a pencil. Named for the channel it drives.)
+// It spreads as it goes. Named `thin` for the channel it drives, and NOT
+// because `spread` would collide: that was true once — naming it `spread`
+// retuned the spray's launch cone to 0.013 cells/s while the mount line
+// still printed the 1.6 the flag asked for — and the `.k.` room exists
+// precisely to end it. `@self.k.spread` and `@self.spread` are different
+// paths now, and `kindle.rill` uses the former with no ill effect.
 row.u2 | relax 1 plane.drift.@self.k.thin | write row.u2 add
 // A stuck row is pulled back toward dense, so a soot mark stays a mark.
 // It does not reach zero: `thin` is not gated on being free, so the two

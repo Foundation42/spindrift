@@ -26,7 +26,7 @@
 //!   --speed <cells/s>        enters the sim); the plane overrides these
 //!   --spread <cells/s>       at plane.drift.@<name>.<knob> when set
 //!   --life <ms>
-//!   --gravity <cells/s²>   seeds plane.drift.@<name>.gravity (the embers kernel reads it)
+//!   --gravity <cells/s²>   seeds plane.drift.@<name>.k.gravity (the embers kernel reads it)
 //!   --pos <x,y,z>          spray position, cells
 //!   --aim <x,y,z>          launch direction × 1.0 (default 0,1,0)
 //!   --world floor|slope|none  the mock World (default floor)
@@ -72,7 +72,7 @@ fn usage() void {
         \\  --ticks <n>           ticks fed after the epoch (default 60)
         \\  --rate --speed --spread <decimal>   knobs (cells, seconds)
         \\  --life <ms>           row lifetime
-        \\  --gravity <decimal>   seeds plane.drift.@<name>.gravity for the embers kernel
+        \\  --gravity <decimal>   seeds plane.drift.@<name>.k.gravity for the embers kernel
         \\  --pos <x,y,z>  --aim <x,y,z>
         \\  --world floor|slope|none  the mock World (default floor); `slope` is the 3-4-5 plane `slide` needs
         \\  --name <em>           the spray's @name on the plane (default em)
