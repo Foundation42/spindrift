@@ -27,6 +27,9 @@
 //
 // Units: `row.size` is a RADIUS in cells, `gravity` is cells/s² on y and
 // NEGATIVE is down (a positive pull lifts).
+describe smoke
+    "A plume that leans off a wind: every row reads the wind where it is and gets pushed downwind of it, so the column bends for as long as the fan blows and straightens again once it stops."
+
 spawn
 gravity plane.drift.@self.k.gravity
 $wind grad at row.pos | mul plane.drift.@self.k.lean | write row.vel add

@@ -53,6 +53,9 @@
 //
 // Units: `row.size` is a RADIUS in cells, `gravity` is cells/s² on y and
 // NEGATIVE is down (a positive pull lifts).
+describe hearth
+    "An ember that lands on a TILTED surface and runs down it instead of stopping, quenching and shedding carbon the whole length of the run — so what it leaves behind is a streak rather than a dot."
+
 spawn
 gravity plane.drift.@self.k.gravity
 collide | slide

@@ -43,6 +43,9 @@
 // ⚠ A `relax` RATE has a ceiling: a step that would close more than the whole
 // gap is refused, so any rate above 1/dt refuses rather than clamping.
 
+describe kindle
+    "A light that spreads: a scattered few rows are never out, every row catches from the brightest thing in reach, and every row dims on its own — so a bright front travels across the cloud with darkness closing in behind it."
+
 spawn
 perish
 

@@ -45,6 +45,9 @@
 //
 // Units: `row.size` is a RADIUS in cells, `gravity` is cells/s² on y and
 // NEGATIVE is down (a positive pull lifts).
+describe motes
+    "Blinking specks that fall into step with their neighbours. Each blinks at its own rate, quicker toward one end of the cloud than the other, and a gentle pull between rows in reach gathers them into bands of synchronised blinking."
+
 spawn
 perish
 

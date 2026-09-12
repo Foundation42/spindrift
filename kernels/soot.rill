@@ -33,6 +33,9 @@
 // Turning it:
 //   `mul 0.05 | add 0.05`  the mark's width in cells: 0.05 to 0.10. It is the
 //                          row's RADIUS, so it sets the collision size too.
+describe soot
+    "Embers that arc down, stop dead where they land and smear a stain into the ground as they hit. The picture is the stains rather than the rows: they darken wherever embers keep falling, and fade on their own clock long after the row that made them is gone."
+
 spawn
 gravity plane.drift.@self.k.gravity
 collide | stick

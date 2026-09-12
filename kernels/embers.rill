@@ -28,6 +28,9 @@
 //
 // `life`, `rate`, `speed` and `spread` are the SPRAY's, not this file's —
 // every "make them last longer / denser / faster / wider" note lands there.
+describe embers
+    "Sparks thrown along the spray's aim, arcing over under gravity and gone the moment their time runs out. The arc is the whole of it — nothing here gives a row a colour or a size, so read as behaviour alone this is equally rain or confetti."
+
 spawn
 gravity plane.drift.@self.k.gravity
 perish

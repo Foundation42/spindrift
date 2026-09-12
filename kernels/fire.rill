@@ -18,7 +18,22 @@
 //   row.u1  sooted   0 clean ....... 1 all carbon
 //   row.u2  thinned  0 dense ....... 1 blown thin
 //
-// All three are born at ZERO, which is not a coincidence: a //
+// All three are born at ZERO, which is not a coincidence: a `spawn`
+// zeroes a row's user channels, so the axes are spelled as how much has
+// HAPPENED to the row, never as what it has left. A newborn has no
+// history, and (0, 0, 0) is the flame.
+//
+// Every line is a `relax` — the step toward a target at a rate per
+// SECOND, which saturates, so no influence can drive a channel past its
+// target and no clamp is needed to say so. They are all `write … add`,
+// and a row's queued adds land on the live value in order, so the
+// influences SUM. That is the whole trick. A second cooling term is not
+// a special case of the first, it is another force on the same channel.
+//
+// The knobs are rates per second (`relax` eats the fed dt). The first
+// draft of this kernel spelled each line `| mul -1 | add 1 | mul <rate>`
+// and the rates were per TICK — correct at one dt and quietly wrong at
+// every other. That kernel is what `relax` was built for.
 // Every `plane.drift.@self.k.<name>` below is a KNOB, not a value: this file
 // says what to turn and the number itself is seeded from outside. `drift-run`
 // seeds only `gravity`; everything else needs a `--seed` of its own, and a
@@ -44,22 +59,9 @@
 //
 // Units: `row.size` is a RADIUS in cells, `gravity` is cells/s² on y and
 // NEGATIVE is down (a positive pull lifts).
-spawn
-// zeroes a row's user channels, so the axes are spelled as how much has
-// HAPPENED to the row, never as what it has left. A newborn has no
-// history, and (0, 0, 0) is the flame.
-//
-// Every line is a `relax` — the step toward a target at a rate per
-// SECOND, which saturates, so no influence can drive a channel past its
-// target and no clamp is needed to say so. They are all `write … add`,
-// and a row's queued adds land on the live value in order, so the
-// influences SUM. That is the whole trick. A second cooling term is not
-// a special case of the first, it is another force on the same channel.
-//
-// The knobs are rates per second (`relax` eats the fed dt). The first
-// draft of this kernel spelled each line `| mul -1 | add 1 | mul <rate>`
-// and the rates were per TICK — correct at one dt and quietly wrong at
-// every other. That kernel is what `relax` was built for.
+
+describe fire
+    "An ember that changes substance as it flies: white-hot and dense at birth, cooling, sooting up and spreading wider as it blows thin. It lands flat, stops dead and is squeezed tight again, so what is left on the floor is a dark mark rather than a puff."
 
 spawn
 gravity plane.drift.@self.k.gravity

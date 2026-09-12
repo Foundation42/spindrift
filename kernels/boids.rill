@@ -43,6 +43,9 @@
 //
 // Units: `row.size` is a RADIUS in cells, `gravity` is cells/s² on y and
 // NEGATIVE is down (a positive pull lifts).
+describe boids
+    "A flock in open air: rows keep a ring clear around themselves, gather toward a wider one, and take on the heading of everyone inside it. No gravity and no floor, so it coasts off the way it was thrown."
+
 spawn
 perish
 
