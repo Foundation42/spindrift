@@ -393,8 +393,9 @@ fn kNear(ctx: *row.Ctx) row.Error!void {
     ctx.out[0] = .{ .scalar = fixed.fromInt(@intCast(got.n)) };
 }
 
-/// `push <k>` — separation: lean away from everything `near` found, at `k`
-/// cells per second per cell of offset. `vel += Σ (pos − other) · k · dt`.
+/// `push <gain>` — separation: lean away from everything `near` found, at
+/// `gain` cells per second per cell of offset.
+/// `vel += Σ (pos − other) · gain · dt`.
 ///
 /// It reads the list off the slate rather than asking again, which is the
 /// whole point: the neighbourhood was already gathered this row, and a
@@ -830,8 +831,18 @@ pub const WORDS = [_]rill.OpDef{
     .{
         .name = "push",
         .tags = &.{ "neighbourhood", "motion" },
-        .inputs = &.{.{ .name = "k", .ty = Tag.number }},
-        .help = "Row word: separation — lean away from everything `near` found, `vel += sum(pos - other) * k * dt`. Reads the list off the slate rather than gathering it again. Needs a `near` above it.",
+        // **`gain`, and it was `k` until 2026-09-12.** Christian, looking at
+        // the graph editor drawing three nodes with a pin labelled `k`:
+        // *"people will ask, wtf is k."* They will. The node beside this one
+        // has always spelled its ports `drift` and `couple`, so the house
+        // style was never in doubt — these two were the holdouts, and a canvas
+        // is what made them visible.
+        //
+        // Safe to rename because no port here is `kw`: a caller writes `push
+        // :tuning.shove` positionally, so no file in the corpus spells the
+        // name at all. It is the PIN that says it, to a reader.
+        .inputs = &.{.{ .name = "gain", .ty = Tag.number }},
+        .help = "Row word: separation — lean away from everything `near` found, `vel += sum(pos - other) * gain * dt`. A PER-NEIGHBOUR gain: the force grows with the crowd, so a wide ring wants a much smaller one than a tight ring. Reads the list off the slate rather than gathering it again. Needs a `near` above it.",
         .class = .reads,
         .routes = .anywhere,
         .consumes = &.{"crowd"},
@@ -841,8 +852,8 @@ pub const WORDS = [_]rill.OpDef{
     .{
         .name = "align",
         .tags = &.{ "neighbourhood", "motion" },
-        .inputs = &.{.{ .name = "k", .ty = Tag.number }},
-        .help = "Row word: alignment — steer toward the MEAN velocity of the rows `near` found, `vel += (mean(other.vel) - vel) * k * dt`. The third of the flocking trio; separation is `push <k>` and cohesion is `push` with a NEGATIVE k, so a boid is `near` + those three. Neighbours' velocities come from the neighbourhood's snapshot. Needs a `near` above it.",
+        .inputs = &.{.{ .name = "gain", .ty = Tag.number }},
+        .help = "Row word: alignment — steer toward the MEAN velocity of the rows `near` found, `vel += (mean(other.vel) - vel) * gain * dt`. The third of the flocking trio; separation is `push <gain>` and cohesion is `push` with a NEGATIVE gain, so a boid is `near` + those three. Neighbours' velocities come from the neighbourhood's snapshot. Needs a `near` above it.",
         .class = .reads,
         .routes = .anywhere,
         .consumes = &.{"crowd"},

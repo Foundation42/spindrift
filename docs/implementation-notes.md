@@ -2276,3 +2276,38 @@ so a sixteenth word is caught by all of them at once.
 are registered; the tags come off the registry, not off a table over there.
 Its own `(verb, subop)` vocabulary already organises itself, because rill
 prepends a two-word name's first word as the home.
+
+## `push`/`align`: the port is `gain` (2026-09-12)
+
+Christian, with the graph editor open on `roaches.rill` and three nodes
+drawing a pin labelled `k`:
+
+> *"Now we need to get rid of these references to k — people will ask, wtf is
+> k."*
+
+They will. And **the word next door has always spelled its ports properly**:
+`sync` takes `drift` and `couple`. So the house style was never in doubt —
+`push` and `align` were the two holdouts, and what made them visible was a
+CANVAS. Text hides a bad port name: `push :tuning.shove` never says `k` at
+all. A pin says it in twelve pixels, to everyone, forever.
+
+> **A drawing audits names that prose does not.** Nothing about these two
+> changed; the only new thing was that a reader could see them.
+
+Safe as a rename because no port here is `kw`: every caller in the corpus
+(`roaches.rill`, `shy.rill`, `boids.rill`) writes the gain positionally, so not
+one file spells the name. The help text carried `k` in three places and says
+`gain` in all of them now, along with `docs/drift-words.md`.
+
+**`gravity g` was left alone, and named rather than changed.** `g` under a node
+called `gravity` is a physics convention a reader completes without help, where
+`k` under `push` is not. It is the last one-letter port in the set; if it
+should go too, it is one line.
+
+### What the gates caught
+
+Three, all in matryoshka, all correct: `hud add`'s minted hole name is derived
+from the PORT name, so `:push_k` became `:push_gain` and `:align_k` became
+`:align_gain`. That coupling is the feature — the socket a reader sees is named
+after the thing it fills — and the gates tracking it is what a derived name
+should cost.
