@@ -69,7 +69,7 @@ fn kSpawn(ctx: *row.Ctx) row.Error!void {
     try ctx.write(.{ .field = population.F_VEL }, .replace, .{ .vec3 = v });
 }
 
-/// `gravity <g>` — `vel.y += g · dt`, g in cells per second². Negative is
+/// `gravity <pull>` — `vel.y += pull · dt`, in cells per second². Negative is
 /// down. Takes a literal or a broadcast (`gravity plane.drift.@self.gravity`).
 fn kGravity(ctx: *row.Ctx) row.Error!void {
     const g = try ctx.scalar(0);
@@ -785,8 +785,19 @@ pub const WORDS = [_]rill.OpDef{
     .{
         .name = "gravity",
         .tags = &.{"motion"},
-        .inputs = &.{.{ .name = "g", .ty = Tag.number }},
-        .help = "Row word: vel.y += g · dt, g in cells/s², negative down — `gravity -9.8`, or `gravity plane.drift.@self.gravity` from a knob.",
+        // **`pull`, and it was `g` until 2026-09-12** — the last one-letter
+        // port in the set, renamed on the same pass and for the same reason as
+        // `push`'s and `align`'s. `g` under a node called `gravity` is a
+        // convention a reader completes without help, which is why it survived
+        // the first pass; Christian's ruling was that a canvas should not ask
+        // anyone to complete anything.
+        //
+        // `accel` was the accurate alternative and is rejected on the rule
+        // that killed `:param` an hour earlier: an abbreviation is the same
+        // crime one syllable longer. `force` is wrong — this is
+        // mass-independent — and `down` inverts the sign a reader types.
+        .inputs = &.{.{ .name = "pull", .ty = Tag.number }},
+        .help = "Row word: vel.y += pull · dt, in cells/s², NEGATIVE is down — `gravity -9.8`, or `gravity plane.drift.@self.gravity` from a knob. A positive pull lifts, which is what `kernels/fireflies.rill` uses it for.",
         .class = .reads,
         .routes = .anywhere,
         .row = rowOnly(kGravity),

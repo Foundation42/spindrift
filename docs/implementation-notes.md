@@ -2299,10 +2299,16 @@ Safe as a rename because no port here is `kw`: every caller in the corpus
 one file spells the name. The help text carried `k` in three places and says
 `gain` in all of them now, along with `docs/drift-words.md`.
 
-**`gravity g` was left alone, and named rather than changed.** `g` under a node
-called `gravity` is a physics convention a reader completes without help, where
-`k` under `push` is not. It is the last one-letter port in the set; if it
-should go too, it is one line.
+**`gravity g` is `gravity pull`**, decided in the same breath: I flagged it as
+a convention a reader completes without help, and Christian's answer was that a
+canvas should not ask anyone to complete anything. He is right — "reads fine
+once you know" is the defence every bad name has.
+
+`accel` was the accurate alternative and loses to the rule that killed `:param`
+an hour earlier: **an abbreviation is the same crime one syllable longer**.
+`force` is wrong (this is mass-independent) and `down` inverts the sign a
+reader types. `pull` is plain, and a POSITIVE one lifts — which
+`kernels/fireflies.rill` has always used it for and the help now says.
 
 ### What the gates caught
 
